@@ -129,11 +129,11 @@ tr.inc td { color: var(--bad); }
     <section class="card" data-panel="players">
       <h2>Welcome email</h2>
       <p class="note">Tells players where the app is, how to sign in with a code, and how to put it on their home screen (iPhone and Android). It opens in your own email app with everyone in BCC, so it comes from you and you hit Send. Long lists can be too much for some email apps; if nothing opens or addresses are missing, use the copy buttons instead.</p>
-      <div class="row" style="margin-bottom:8px">
-        <label for="wTo" style="font-weight:600">Send to</label>
-        <select id="wTo"><option value="new">Players not welcomed yet</option><option value="nosign">Players who haven't signed in</option><option value="all">Every active player with an email</option></select>
-        <span class="note" id="wCount" style="margin:0"></span>
+      <div class="row" style="margin-bottom:6px">
+        <b>Send to</b><span class="note" id="wCount" style="margin:0"></span>
+        <button class="btn secondary mv" type="button" id="wAll">Select all</button><button class="btn secondary mv" type="button" id="wNone">Clear</button>
       </div>
+      <div id="wPick" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:2px 12px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px"></div>
       <div style="display:grid;gap:6px;max-width:720px">
         <input id="wSubject" value="The BCC Golf League app is ready">
         <textarea id="wBody" rows="16" style="font:inherit;font-size:14px;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"></textarea>
@@ -142,7 +142,7 @@ tr.inc td { color: var(--bad); }
         <button class="btn" type="button" id="wOpen">Open in my email app</button>
         <button class="btn secondary" type="button" id="wCopyTo">Copy addresses</button>
         <button class="btn secondary" type="button" id="wCopyBody">Copy message</button>
-        <button class="btn secondary" type="button" id="wMark">Mark these as welcomed</button>
+        <button class="btn secondary" type="button" id="wMark">Mark as sent</button>
       </div>
     </section>
 
@@ -335,7 +335,7 @@ tr.inc td { color: var(--bad); }
       ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
     }
     renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots(); renderWeekEvents();
-    wCount();
+    renderWelcome();
     if (window.BCCAdmin.onLoad) window.BCCAdmin.onLoad();
   }
   $("seasonPick").onchange = () => loadAll(+$("seasonPick").value);
@@ -895,9 +895,19 @@ Questions or trouble signing in? Just reply to this email.
 
 See you on the course,
 Nitin`;
-  const wList = () => players.filter(p => p.active && p.email && ($("wTo").value === "all" || ($("wTo").value === "new" ? !p.welcome_sent_at : !p.user_id)));
-  const wCount = () => { const n = wList().length; $("wCount").textContent = `${n} player${n === 1 ? "" : "s"}`; };
-  $("wBody").value = WELCOME; $("wTo").onchange = wCount;
+  const wPicked = new Set();
+  const wList = () => players.filter(p => wPicked.has(p.id));
+  const wCount = () => { const n = wList().length; $("wCount").textContent = `${n} selected`; };
+  const wFmt = d => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  function renderWelcome() {
+    const list = players.filter(p => p.active && p.email);
+    $("wPick").innerHTML = list.map(p => `<label class="row" style="gap:6px;font-size:14px;flex-wrap:nowrap"><input type="checkbox" data-w="${p.id}"${wPicked.has(p.id) ? " checked" : ""}><span>${esc(pname(p))}${p.welcome_sent_at ? ` <span class="note" style="margin:0">· sent ${wFmt(p.welcome_sent_at)}</span>` : ""}${p.user_id ? ' <span class="note" style="margin:0">· signed in</span>' : ""}</span></label>`).join("") || '<span class="note">No players with an email.</span>';
+    $("wPick").querySelectorAll("[data-w]").forEach(el => el.onchange = () => { el.checked ? wPicked.add(+el.dataset.w) : wPicked.delete(+el.dataset.w); wCount(); });
+    wCount();
+  }
+  $("wAll").onclick = () => { players.filter(p => p.active && p.email).forEach(p => wPicked.add(p.id)); renderWelcome(); };
+  $("wNone").onclick = () => { wPicked.clear(); renderWelcome(); };
+  $("wBody").value = WELCOME;
   const copy = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg); } catch (e) { prompt("Copy this:", t); } };
   $("wCopyTo").onclick = () => copy(wList().map(p => p.email).join(", "), `${wList().length} addresses copied`);
   $("wCopyBody").onclick = () => copy($("wBody").value, "Message copied");
@@ -907,10 +917,10 @@ Nitin`;
   };
   $("wMark").onclick = async () => {
     const to = wList(); if (!to.length) return toast("No one to mark.", true);
-    if (!confirm(`Mark ${to.length} player${to.length === 1 ? "" : "s"} as welcomed? Do this after you've sent the email.`)) return;
+    if (!confirm(`Mark ${to.length} player${to.length === 1 ? "" : "s"} as sent? Do this after you've sent the email.`)) return;
     const now = new Date().toISOString();
     const { error } = await sb.from("players").update({ welcome_sent_at: now }).in("id", to.map(p => p.id));
-    if (check(error, "Marked as welcomed")) { to.forEach(p => p.welcome_sent_at = now); wCount(); renderPlayers(); }
+    if (check(error, "Marked as sent")) { to.forEach(p => p.welcome_sent_at = now); wPicked.clear(); renderWelcome(); }
   };
 
   window.BCCAdmin = { sb, $, esc, toast, check, get players() { return players; }, get courses() { return courses; }, get hcps() { return hcps; } };
