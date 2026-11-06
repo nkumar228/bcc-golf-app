@@ -128,7 +128,7 @@ tr.inc td { color: var(--bad); }
 
     <section class="card" data-panel="players">
       <h2>Welcome email</h2>
-      <p class="note">Tells players where the app is, how to sign in with a code, and how to put it on their home screen (iPhone and Android). It opens in your own email app with everyone in BCC, so it comes from you and you hit Send. Long lists can be too much for some email apps; if nothing opens or addresses are missing, use the copy buttons instead.</p>
+      <p class="note">Tells players where the app is, how to sign in with a code, and how to put it on their home screen (iPhone and Android). It opens a ready-to-send draft in Gmail (or your computer's email app) with everyone in BCC, so it comes from you and you hit Send. Long lists can be too much for some email apps; if nothing opens or addresses are missing, use the copy buttons instead.</p>
       <div class="row" style="margin-bottom:6px">
         <b>Send to</b><span class="note" id="wCount" style="margin:0"></span>
         <button class="btn secondary mv" type="button" id="wAll">Select all</button><button class="btn secondary mv" type="button" id="wNone">Clear</button>
@@ -139,7 +139,8 @@ tr.inc td { color: var(--bad); }
         <textarea id="wBody" rows="16" style="font:inherit;font-size:14px;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"></textarea>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="btn" type="button" id="wOpen">Open in my email app</button>
+        <button class="btn" type="button" id="wGmail">Open in Gmail</button>
+        <button class="btn secondary" type="button" id="wOpen">Open in my email app</button>
         <button class="btn secondary" type="button" id="wCopyTo">Copy addresses</button>
         <button class="btn secondary" type="button" id="wCopyBody">Copy message</button>
         <button class="btn secondary" type="button" id="wMark">Mark as sent</button>
@@ -914,6 +915,10 @@ Nitin`;
   $("wOpen").onclick = () => {
     const to = wList(); if (!to.length) return toast("No one to send to.", true);
     location.href = `mailto:?bcc=${encodeURIComponent(to.map(p => p.email).join(","))}&subject=${encodeURIComponent($("wSubject").value)}&body=${encodeURIComponent($("wBody").value)}`;
+  };
+  $("wGmail").onclick = () => {
+    const to = wList(); if (!to.length) return toast("Tick at least one player.", true);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(to.map(p => p.email).join(","))}&su=${encodeURIComponent($("wSubject").value)}&body=${encodeURIComponent($("wBody").value)}`, "_blank", "noopener");
   };
   $("wMark").onclick = async () => {
     const to = wList(); if (!to.length) return toast("No one to mark.", true);
