@@ -135,6 +135,9 @@ table.sc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular
 .cup-only { display: none !important; }
 body.cup-on .cup-only { display: block !important; }
 .captain-only { display: none !important; }
+/* Cup mode takes over Home and Score: hide the league-night content there */
+body.cup-on #v-home > :not(#cupHome), body.cup-on #v-score > :not(#cupScore) { display: none !important; }
+body.cup-on .cup-take { display: grid !important; gap: 12px; }
 body.cup-on.is-captain .captain-only { display: block !important; }
 a.caplink { display: grid; gap: 2px; text-decoration: none; color: var(--ink); border-left: 4px solid var(--flag); }
 .croster { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
@@ -501,7 +504,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 
 <main class="app">
   <section class="view" id="v-home" aria-label="Home">
-    <div id="cupHome" hidden></div>
+    <div id="cupHome" class="cup-take" hidden></div>
     <div class="card hero">
       <div class="hero-top">
         <div>
@@ -562,6 +565,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   </section>
 
   <section class="view" id="v-score" aria-label="Score" hidden>
+  <div id="cupScore" class="cup-take" hidden></div>
   <div class="card pad" id="grpPickWrap" hidden style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="label" for="grpPick">Scoring for</label><select id="grpPick" style="flex:1;min-width:0"></select></div>
   <div class="match" id="matchHead" aria-label="Your group">
     <div class="team">#4 Beer Bombers<small>Kumar · Woolum</small></div>
@@ -1474,8 +1478,8 @@ the spirit, intent, and fairness of league competition.</p>
       const teamName = t => t ? `#${t.number} ${esc(t.name)}` : "";
       const names = tid => { const t = teamById.get(tid); return t ? rosterOf(t).map(r => r.ghost ? "Ghost" : esc(r.p?.last_name || "")).join(" · ") : ""; };
       // header and group card
-      $("evTitle").textContent = `${season.name} · Week ${ev.number}`;
-      $("evSub").textContent = `${fmtDate(ev.play_date)} · ${course?.name || ""} · ${myTee?.name || "Blue"} tees`;
+      if (!document.body.classList.contains("cup-on")) $("evTitle").textContent = `${season.name} · Week ${ev.number}`;
+      if (!document.body.classList.contains("cup-on")) $("evSub").textContent = `${fmtDate(ev.play_date)} · ${course?.name || ""} · ${myTee?.name || "Blue"} tees`;
       if (match) {
         const a = teamById.get(match.team_a), b = teamById.get(match.team_b);
         $("matchHead").innerHTML = `<div class="team">${teamName(a)}<small>${names(match.team_a)}</small></div><div class="vs">with</div><div class="team r">${teamName(b)}<small>${names(match.team_b)}</small></div>`;

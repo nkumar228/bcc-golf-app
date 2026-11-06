@@ -4,7 +4,7 @@
   const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const C = window.Cup, F = C.FORMATS;
   const sb = () => window.BCC && window.BCC.sb, ses = () => window.BCC && window.BCC.getSession();
-  let D = null, busy = false, timer = null;
+  let D = null, busy = false, timer = null, savedTitle = null;
   const fmtDate = d => d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : "";
   const fmtTime = t => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
   const fmtPts = v => v % 1 ? `${Math.floor(v) || ""}½` : String(v);
@@ -39,14 +39,17 @@
     const t = document.querySelector('.tabs a[data-tab="rounds"], .tabs a[data-tab="cup"]');
     if (t) { t.href = "#rounds"; t.dataset.tab = "rounds"; t.lastChild.textContent = "Rounds"; }
     if ($("cupHome")) $("cupHome").hidden = true;
+    if ($("cupScore")) $("cupScore").hidden = true;
+    if (savedTitle) { $("evTitle").textContent = savedTitle[0]; $("evSub").textContent = savedTitle[1]; savedTitle = null; }
     if (location.hash === "#cup") location.hash = "#home";
   }
   function on() {
     document.body.classList.add("cup-on");
     const t = document.querySelector('.tabs a[data-tab="rounds"], .tabs a[data-tab="cup"]');
     if (t) { t.href = "#cup"; t.dataset.tab = "cup"; t.lastChild.textContent = "Cup"; if (location.hash === "#cup") t.setAttribute("aria-current", "page"); }
-    $("cupHome").hidden = false;
-    if (!timer) timer = setInterval(() => { if (document.visibilityState === "visible" && (location.hash === "#cup" || location.hash === "#captain" || location.hash === "" || location.hash === "#home") && !busy && !document.activeElement?.matches?.("#v-cup input, #v-cup select, #v-captain select")) load(); }, 20000);
+    $("cupHome").hidden = false; $("cupScore").hidden = false;
+    if (!savedTitle) savedTitle = [$("evTitle").textContent, $("evSub").textContent];
+    if (!timer) timer = setInterval(() => { if (document.visibilityState === "visible" && ["#cup", "#captain", "#score", "", "#home"].includes(location.hash) && !busy && !document.activeElement?.matches?.("#v-cup input, #v-cup select, #v-captain select, #cupScore input")) load(); }, 20000);
   }
 
   // ---------- matches ----------
@@ -79,12 +82,18 @@
     const totalPts = all.reduce((t, x) => t + (shown(x.r) ? x.ms.length : 0), 0);
     const board = `<div class="cup-board">${D.sides.map(s => `<div class="cside" style="--c:${esc(s.color)}"><span>${esc(s.name)}${D.cup.defending_side_id === s.id ? " · holds the Cup" : ""}</span><b class="num">${fmtPts(tot[s.id])}</b>${anyLive ? `<small>${fmtPts(live[s.id])} if it ended now</small>` : ""}</div>`).join("")}</div>`;
     const myRound = D.rounds.find(r => r.status === "revealed" && myMatch(r));
-    $("cupHome").innerHTML = `<div class="card pad"><div class="head"><p class="label">${esc(D.cup.name)}</p><a class="linkbtn" href="#cup">Open</a></div>${board}
-      <p class="updated" style="margin:8px 0 0">${myRound ? `You're playing in ${esc(myRound.name)}. ` : ""}${totalPts ? `${totalPts} match${totalPts === 1 ? "" : "es"} out so far.` : "Matchups appear here when they're revealed."}</p>
-      ${myRound ? `<a class="btn small" href="#cup" style="margin-top:10px;display:inline-block">Score my match</a>` : ""}</div>`;
+    const cur = D.rounds.find(r => r.status === "revealed") || D.rounds.find(r => r.status === "lineups" || r.status === "setup") || [...D.rounds].reverse().find(r => r.status === "final");
+    $("evTitle").textContent = D.cup.name;
+    $("evSub").textContent = cur ? `${cur.name} · ${roundLine(cur)}` : "Queen City Cup";
+    const curCard = cur ? roundCard(cur, shown(cur) ? matchesOf(cur) : []) : "";
+    const myLine = myRound ? (() => { const m = myMatch(myRound); return `<div class="card pad"><div class="head"><p class="label">Your match · ${esc(myRound.name)}</p></div><div class="cstat">${esc(m.st.text)}</div><a class="btn small" href="#score" style="justify-self:start;display:inline-block;margin-top:6px">Score my match</a></div>`; })() : "";
+    $("cupHome").innerHTML = `<div class="card pad"><div class="head"><p class="label">${esc(D.cup.name)}</p><a class="linkbtn" href="#cup">All rounds</a></div>${board}
+      <p class="updated" style="margin:8px 0 0">${totalPts ? `${totalPts} match${totalPts === 1 ? "" : "es"} out so far.` : "Matchups appear here when they're revealed."}</p></div>${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
+    const next = D.rounds.find(r => r.status !== "final");
+    $("cupScore").innerHTML = myRound ? scorer(myRound) : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`;
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
-    $("cupMine").innerHTML = myRound ? scorer(myRound) : "";
+    $("cupMine").innerHTML = "";
     document.body.classList.toggle("is-captain", !!D.captainOf);
     $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
     $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
@@ -292,6 +301,6 @@
   }
 
   window.addEventListener("bcc-session", load);
-  window.addEventListener("hashchange", () => { if ((location.hash === "#cup" || location.hash === "#captain") && D) load(); });
+  window.addEventListener("hashchange", () => { if (["#cup", "#captain", "#score", "#home", ""].includes(location.hash) && D) load(); });
   load();
 })();
