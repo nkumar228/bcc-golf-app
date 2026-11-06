@@ -613,7 +613,7 @@ tr.inc td { color: var(--bad); }
     $("seasonForm").innerHTML =
       f("ghost_net", "Ghost score (net)", "Locked net score used when a team has no sub.") +
       f("points_table", "Weekly points by place", "1st place first, separated by commas.") +
-      f("team_win", "Team win", "Team points for winning the weekly match.") +
+      f("team_win", "Team win", "Team points when the team's combined net beats the team it played.") +
       f("team_tie", "Team tie", "Team points for a tie.") +
       f("best_of", "Weeks that count", "Standings use each player's best this many weeks.") +
       f("handicap_rounds", "Handicap: recent rounds", "How many recent rounds the handicap looks at.") +
@@ -689,7 +689,7 @@ tr.inc td { color: var(--bad); }
       const a = tn(m.team_a), b = tn(m.team_b);
       [[m.team_a, m.team_b, a, b], [m.team_b, m.team_a, b, a]].forEach(([t, o, mine, theirs]) => {
         const mp = mine < theirs ? season.team_win : mine === theirs ? season.team_tie : 0;
-        teamRows.push({ team_id: t, opponent_id: o, team_net: mine, match_points: mp, player_points: pp(t), total: mp + pp(t) });
+        teamRows.push({ team_id: t, opponent_id: o, team_net: mine, match_points: mp, player_points: pp(t), total: mp });
       });
     });
     return { rows, teamRows, incomplete: rows.filter(r => !r.ghost && !r.done) };
@@ -746,14 +746,14 @@ tr.inc td { color: var(--bad); }
   }
   function renderResults() {
     const { rows, teamRows, incomplete } = compute(), final = wk.ev.status === "final";
-    $("wkRule").textContent = `Places use net score among real golfers; ties split the points. Ghosts count ${season.ghost_net} net for their team but take no place. Team win ${season.team_win}, tie ${season.team_tie}.`;
+    $("wkRule").textContent = `Places use net score among real golfers; ties split the points. Ghosts count ${season.ghost_net} net for their team but take no place. Teams: combined net against the team they played; win ${season.team_win}, tie ${season.team_tie}, loss 0. Golfer points don't go to the team.`;
     const order = [...rows].sort((a, b) => (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || (a.place ?? 999) - (b.place ?? 999));
     $("wkResults").innerHTML = `<thead><tr><th>Pos</th><th>Golfer</th><th>Team</th><th class="num">Gross</th><th class="num">Index</th><th class="num">Hcp</th><th class="num">Net</th><th class="num">Pts</th></tr></thead><tbody>` +
       order.map(r => `<tr${!r.ghost && !r.done ? ' class="inc"' : ""}><td>${r.ghost ? "" : r.place ? (r.tied ? "T" : "") + r.place : "–"}</td><td>${r.ghost ? '<span class="note">Ghost</span>' : `<b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ' <span class="note">sub</span>' : ""}`}</td><td>${tLabel(r.team_id)}</td>
         <td class="num">${r.ghost ? "" : r.done ? r.gross : r.thru + "/9"}</td><td class="num">${r.ghost ? "" : (+r.handicap_index).toFixed(2)}</td><td class="num">${r.ghost ? "" : r.course_handicap}</td><td class="num"><b>${r.done || r.ghost ? r.net : ""}</b></td><td class="num">${r.ghost ? "" : r.points}</td></tr>`).join("") + `</tbody>`;
     const tOrder = [...teamRows].sort((a, b) => b.total - a.total);
-    $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th class="num">Match</th><th class="num">Golfer pts</th><th class="num">Total</th></tr></thead><tbody>` +
-      tOrder.map(t => `<tr><td><b>${tLabel(t.team_id)}</b></td><td class="note">${tLabel(t.opponent_id)}</td><td class="num">${t.team_net}</td><td class="num">${t.match_points}</td><td class="num">${t.player_points}</td><td class="num"><b>${t.total}</b></td></tr>`).join("") + `</tbody>`;
+    $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th>Result</th><th class="num">Team pts</th></tr></thead><tbody>` +
+      tOrder.map(t => `<tr><td><b>${tLabel(t.team_id)}</b></td><td class="note">${tLabel(t.opponent_id)}</td><td class="num">${t.team_net}</td><td>${t.match_points === season.team_win ? "Win" : t.match_points === season.team_tie ? "Tie" : "Loss"}</td><td class="num"><b>${t.total}</b></td></tr>`).join("") + `</tbody>`;
     $("wkWarn").textContent = !final && incomplete.length ? `${incomplete.length} golfer${incomplete.length === 1 ? " hasn't" : "s haven't"} finished: ${incomplete.map(r => pLabel(r.player_id)).join(", ")}. Fix their scores or swap in a ghost before finalizing.` : "";
     $("wkFinal").hidden = final; $("wkReopen").hidden = !final;
     $("wkFinal").disabled = !!incomplete.length || wk.ev.status === "rained_out";

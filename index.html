@@ -1452,7 +1452,7 @@ the spirit, intent, and fairness of league competition.</p>
 
     // Home: this week's card and season standings from finalized weeks
     async function renderHome() {
-      const { ev, matchups, teams } = ctx, season = { best_of: 15, ...ctx.season };
+      const { ev, matchups, teams } = ctx, season = { best_of: 15, team_win: 10, team_tie: 5, ...ctx.season };
       const { data: evs } = await sb.from("events").select("id,number,status").eq("season_id", season.id).order("number");
       const total = (evs || []).length, finals = (evs || []).filter(e => e.status === "final").map(e => e.id);
       const teamById = new Map(teams.map(t => [t.id, t]));
@@ -1487,14 +1487,14 @@ the spirit, intent, and fairness of league competition.</p>
       (res || []).forEach(r => { const x = byP.get(r.player_id) || { id: r.player_id, name: `${r.players?.last_name}, ${r.players?.first_name}`, pts: [] }; x.pts.push(+r.points); byP.set(r.player_id, x); });
       const pl = [...byP.values()].map(x => ({ ...x, played: x.pts.length, total: x.pts.reduce((a, b) => a + b, 0), best: [...x.pts].sort((a, b) => b - a).slice(0, season.best_of).reduce((a, b) => a + b, 0) })).sort((a, b) => b.best - a.best || b.total - a.total);
       const byT = new Map();
-      (tres || []).forEach(r => { const x = byT.get(r.team_id) || { id: r.team_id, total: 0, match: 0, players: 0 }; x.total += +r.total; x.match += +r.match_points; x.players += +r.player_points; byT.set(r.team_id, x); });
+      (tres || []).forEach(r => { const x = byT.get(r.team_id) || { id: r.team_id, total: 0, w: 0, t: 0, l: 0 }; const mp = +r.match_points; x.total += mp; if (mp === +season.team_win) x.w++; else if (mp === +season.team_tie) x.t++; else x.l++; byT.set(r.team_id, x); });
       const tl = [...byT.values()].sort((a, b) => b.total - a.total);
       const f1 = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
       const pos = (arr, val) => arr.map((r, i) => { let p = i; while (p > 0 && val(arr[p - 1]) === val(r)) p--; return (arr.filter(x => val(x) === val(r)).length > 1 ? "T" : "") + (p + 1); });
       const myTeam = teams.find(t => (t.team_players || []).some(tp => tp.player_id === me));
       const tp = pos(tl, r => r.total);
-      $("teamStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Team</th><th>Total</th><th>Match</th><th>Golfer pts</th></tr></thead><tbody>` +
-        tl.map((r, i) => `<tr${myTeam && r.id === myTeam.id ? ' class="mine"' : ""}><td class="pos">${tp[i]}</td><td class="l"><b>${esc(teamById.get(r.id)?.name || "")}</b></td><td class="big">${f1(r.total)}</td><td>${f1(r.match)}</td><td>${f1(r.players)}</td></tr>`).join("") + "</tbody>";
+      $("teamStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Team</th><th>Pts</th><th>W-T-L</th></tr></thead><tbody>` +
+        tl.map((r, i) => `<tr${myTeam && r.id === myTeam.id ? ' class="mine"' : ""}><td class="pos">${tp[i]}</td><td class="l"><b>${esc(teamById.get(r.id)?.name || "")}</b></td><td class="big">${f1(r.total)}</td><td>${r.w}-${r.t}-${r.l}</td></tr>`).join("") + "</tbody>";
       let showAll = false;
       const pp = pos(pl, r => r.best);
       const draw = () => {
