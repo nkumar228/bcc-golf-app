@@ -144,6 +144,17 @@
     }
     return { done: true };
   }
+  // Course handicap for this round's tees, and the team handicap the format gives a pair
+  const chOf = (r, pid) => { const p = P(pid), c = D.cp.find(x => x.player_id === pid), tee = C.teeFor(r, D.tbc, p?.default_tee || "Blue"); return tee ? C.courseHcp(c?.handicap_index ?? 0, tee, r.holes) : null; };
+  function teamHcpText(r, a, b) {
+    const f = F[r.format]; if (!f || !a) return "";
+    const ids = [a, f.pairs ? b : null].filter(Boolean), chs = ids.map(id => chOf(r, id));
+    if (chs.some(x => x == null)) return "set the course to see handicaps";
+    if (!f.pairs) return `hcp ${chs[0]}`;
+    if (ids.length < 2) return `${last(ids[0])} ${chs[0]}`;
+    if (f.w) return `team hcp ${C.teamHcp(chs, f.w)} (${chs.join(" & ")})`;
+    return `hcps ${chs.join(" & ")}`;
+  }
   const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") : "";
   const idxOf = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
   function pickOptions(r, sel, mine) {
@@ -186,7 +197,7 @@
     const t = turnOf(r), n = matchCount(r), a = r.first_side_id, pairs = pairsOf(r), unit = pairs ? "team" : "player";
     const rows = Array.from({ length: n }, (_, k) => { const i = k + 1, thrower = i % 2 ? a : D.sides.find(s => s.id !== a).id, answerer = D.sides.find(s => s.id !== thrower).id;
       const te = entryOf(r, thrower, i), ae = entryOf(r, answerer, i);
-      return `<li class="${t && t.slot === i ? "now" : ""}"><span style="--c:${esc(side(thrower).color)}">${te ? names(r, te) : "…"}</span><em>vs</em><span class="r" style="--c:${esc(side(answerer).color)}">${ae ? names(r, ae) : "…"}</span><small>${esc(sideName(thrower))} throws out</small></li>`; }).join("");
+      return `<li class="${t && t.slot === i ? "now" : ""}"><span style="--c:${esc(side(thrower).color)}">${te ? names(r, te) + `<small>${esc(teamHcpText(r, te.player_id, te.partner_id))}</small>` : "…"}</span><em>vs</em><span class="r" style="--c:${esc(side(answerer).color)}">${ae ? names(r, ae) + `<small>${esc(teamHcpText(r, ae.player_id, ae.partner_id))}</small>` : "…"}</span><small>${esc(sideName(thrower))} throws out</small></li>`; }).join("");
     const last = D.entries.filter(e => e.round_id === r.id).sort((x, y) => y.id - x.id)[0];
     let action;
     if (t.done) action = `<p class="updated"><b>Every match is set.</b> Waiting for the commissioner to reveal them.</p>`;
@@ -194,7 +205,7 @@
     else {
       const vs = t.throwing ? "" : ` against ${names(r, entryOf(r, D.sides.find(s => s.id !== mine).id, t.slot))}`;
       action = `<div class="cpick" data-round="${r.id}"><p style="margin:0"><b>Your turn:</b> ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}${vs}`}.</p>
-        <div class="crow2"><select data-pp="player">${pickOptions(r, null, mine)}</select>${pairs ? `<select data-pp="partner">${pickOptions(r, null, mine)}</select>` : ""}</div>
+        <div class="crow2"><select data-pp="player">${pickOptions(r, null, mine)}</select>${pairs ? `<select data-pp="partner">${pickOptions(r, null, mine)}</select>` : ""}<span class="chcp" data-hcp="${r.id}"></span></div>
         <button class="btn small" type="button" data-place="${r.id}" style="margin-top:8px">${t.throwing ? "Throw out" : "Send"}</button></div>`;
     }
     const undo = last && last.side_id === mine && r.status === "lineups" ? `<button class="linkbtn" type="button" data-undo="${r.id}">Take back my last pick</button>` : "";
@@ -205,7 +216,7 @@
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === mine);
     if (submitted) return `<p class="updated"><b>Your picks are in.</b> They stay hidden until the commissioner reveals the round.</p><ol class="clist">${es.sort((a, b) => a.slot - b.slot).map(e => `<li>${names(r, e)}</li>`).join("")}</ol>`;
     return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
-      <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${pairs ? "Team " : ""}${i + 1}</b><select data-e="player_id">${pickOptions(r, e?.player_id, mine)}</select>${pairs ? `<select data-e="partner_id">${pickOptions(r, e?.partner_id, mine)}</select>` : ""}</div>`; }).join("")}
+      <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${pairs ? "Team " : ""}${i + 1}</b><select data-e="player_id">${pickOptions(r, e?.player_id, mine)}</select>${pairs ? `<select data-e="partner_id">${pickOptions(r, e?.partner_id, mine)}</select>` : ""}<span class="chcp">${esc(teamHcpText(r, e?.player_id, e?.partner_id))}</span></div>`; }).join("")}
       <button class="btn small" type="button" data-submit="${r.id}" style="margin-top:10px">Submit picks</button><p class="si-err" id="cupErr${r.id}"></p></div>`;
   }
 
@@ -232,6 +243,11 @@
       if (pl === pt) { $("cupErr" + rid).textContent = "Pick two different players."; return; }
       rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid);
     });
+    document.querySelectorAll(".cpick").forEach(box => {
+      const r = D.rounds.find(x => x.id === +box.dataset.round), out = box.querySelector(".chcp");
+      const upd = () => { const a = +box.querySelector('[data-pp="player"]').value || null, b = box.querySelector('[data-pp="partner"]') ? (+box.querySelector('[data-pp="partner"]').value || null) : null; out.textContent = teamHcpText(r, a || b, a ? b : null); };
+      box.querySelectorAll("[data-pp]").forEach(el => el.addEventListener("change", upd));
+    });
     document.querySelectorAll("[data-undo]").forEach(b => b.onclick = () => rpc("cup_undo", { p_round: +b.dataset.undo, p_side: D.captainOf }, "cupErr" + b.dataset.undo));
     document.querySelectorAll(".cedit").forEach(box => {
       const rid = +box.dataset.round, sid = D.captainOf;
@@ -244,6 +260,7 @@
         busy = false;
         if (res.error) { $("cupErr" + rid).textContent = "Couldn't save: " + res.error.message; return; }
         if (cur.round_id) Object.assign(cur, rec); else D.entries.push(rec);
+        const r = D.rounds.find(x => x.id === rid), row = el.closest("[data-slot]"); row.querySelector(".chcp").textContent = teamHcpText(r, rec.player_id || rec.partner_id, rec.player_id ? rec.partner_id : null);
       });
     });
     document.querySelectorAll("[data-submit]").forEach(b => b.onclick = async () => {
