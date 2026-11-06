@@ -39,7 +39,7 @@
     const y = (cups[0]?.year || new Date().getFullYear() - 1) + 1;
     const name = prompt("Name for the new Cup", `Queen City Cup ${y}`); if (!name) return;
     const prev = cups[0];
-    const { data: c, error } = await sb.from("cups").insert({ name, year: y, active: false }).select().single(); if (!check(error, "")) return;
+    const { data: c, error } = await sb.from("cups").insert({ name, year: +(name.match(/\b(20\d\d)\b/) || [])[1] || y, active: false }).select().single(); if (!check(error, "")) return;
     // Sides stay the same from Cup to Cup: copy the last Cup's sides, captains and players.
     let ps = [], pp = [];
     if (prev) { ({ data: ps } = await sb.from("cup_sides").select("*").eq("cup_id", prev.id).order("sort")); ({ data: pp } = await sb.from("cup_players").select("*").eq("cup_id", prev.id)); }
@@ -51,12 +51,20 @@
     const def = ns.find(n => n.sort === 0) || ns[0], chal = ns.find(n => n !== def);
     await sb.from("cups").update({ defending_side_id: def.id }).eq("id", c.id);
     await sb.from("cup_rounds").insert([
-      { cup_id: c.id, number: 1, name: "Round 1", holes: 9, status: "setup", format_side_id: chal.id, order_side_id: def.id },
-      { cup_id: c.id, number: 2, name: "Round 2", holes: 9, status: "setup", format_side_id: def.id, order_side_id: chal.id },
-      { cup_id: c.id, number: 3, name: "Final", holes: 18, status: "setup", format: "singles", order_side_id: def.id, allow_blind: true, course_id: A.courses[0]?.id ?? null, course2_id: A.courses[1]?.id ?? null }
+      { cup_id: c.id, number: 1, name: "Round 1", holes: 9, status: "setup", format: null, format_side_id: chal.id, order_side_id: def.id, allow_blind: false, course_id: null, course2_id: null },
+      { cup_id: c.id, number: 2, name: "Round 2", holes: 9, status: "setup", format: null, format_side_id: def.id, order_side_id: chal.id, allow_blind: false, course_id: null, course2_id: null },
+      { cup_id: c.id, number: 3, name: "Final", holes: 18, status: "setup", format: "singles", format_side_id: null, order_side_id: def.id, allow_blind: true, course_id: A.courses[0]?.id ?? null, course2_id: A.courses[1]?.id ?? null }
     ]);
+    await addSubs(c.id, new Set((pp || []).filter(x => map.get(x.side_id)).map(x => x.player_id)));
     toast(`${name} created`); loadCups(c.id);
   };
+
+  // Subs: no side, eligible once they have at least two league rounds. Their Cup index is frozen like everyone's.
+  const eligible = pid => (A.hcps.get(pid)?.rounds_available ?? 0) >= 2;
+  async function addSubs(cupId, taken) {
+    const rows = A.players.filter(p => p.active && !taken.has(p.id) && eligible(p.id)).map(p => ({ cup_id: cupId, player_id: p.id, side_id: null, handicap_index: A.hcps.get(p.id)?.handicap_index ?? null }));
+    if (rows.length) await sb.from("cup_players").upsert(rows, { onConflict: "cup_id,player_id", ignoreDuplicates: true });
+  }
 
   // ---------- totals ----------
   function matchesOf(r) {
@@ -106,10 +114,10 @@
       </tbody></table></div>
 
       <h3 style="margin:18px 0 8px;font-size:15px">Players</h3>
-      <p class="note">Sides stay the same for the whole Cup. Put new players on a side as they join. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
+      <p class="note">Sides stay the same for the whole Cup. Put new players on a side as they join. Subs don't take a side; anyone with at least two league rounds can be a sub, and either captain can put a sub in a lineup. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
       <div class="row" style="margin-bottom:8px">${D.rounds.some(r => r.status === "revealed" || r.status === "final") ? '<span class="pill">Handicaps locked: the first round has started</span>' : '<button class="btn secondary" type="button" id="cupRefresh">Refresh handicaps</button><span class="note" style="margin:0">Use this once the league season is final. It locks when the first round is revealed.</span>'}</div>
-      <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
-        ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side>${sideOpts(c?.side_id, "Not playing")}</select></td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
+      <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th class="num">League rounds</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
+        ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side><option value="">Not playing</option><option value="sub"${c && c.side_id == null ? " selected" : ""}${eligible(p.id) || (c && c.side_id == null) ? "" : " disabled"}>Sub</option>${D.sides.map(s => `<option value="${s.id}"${s.id === c?.side_id ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></td><td class="num">${A.hcps.get(p.id)?.rounds_available ?? 0}</td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
       </tbody></table></div>
 
       <h3 style="margin:18px 0 8px;font-size:15px">Rounds</h3>
@@ -152,7 +160,9 @@
     const f = F[r.format] || F.singles, mine = D.cp.filter(c => c.side_id === s.id).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === s.id);
     const n = Math.max(f.pairs ? Math.ceil(mine.length / 2) : mine.length, ...es.map(e => e.slot), 1);
-    const opt = sel => `<option value="">–</option>` + mine.map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`).join("");
+    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
+    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
+    const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
     return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "ranking" : "lineup"} ${submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
       ${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="slot" data-slot="${i + 1}"><b style="width:22px">${i + 1}</b><select data-e="player_id"${locked ? " disabled" : ""}>${opt(e?.player_id)}</select>${f.pairs ? `<select data-e="partner_id"${locked ? " disabled" : ""}>${opt(e?.partner_id)}</select>` : ""}</div>`; }).join("")}
@@ -183,15 +193,16 @@
       const { error } = await sb.from("cup_sides").update({ [k]: v }).eq("id", id); if (check(error)) loadCup();
     });
     body.querySelectorAll("#cupPlayers [data-side]").forEach(el => el.onchange = async () => {
-      const pid = +el.closest("tr").dataset.p, sid = +el.value || null;
-      const r = sid ? await sb.from("cup_players").upsert({ cup_id: cup.id, player_id: pid, side_id: sid, handicap_index: D.cp.find(c => c.player_id === pid)?.handicap_index ?? A.hcps.get(pid)?.handicap_index ?? null }, { onConflict: "cup_id,player_id" })
+      const pid = +el.closest("tr").dataset.p, sub = el.value === "sub", sid = sub ? null : (+el.value || null);
+      const r = sid || sub ? await sb.from("cup_players").upsert({ cup_id: cup.id, player_id: pid, side_id: sid, handicap_index: D.cp.find(c => c.player_id === pid)?.handicap_index ?? A.hcps.get(pid)?.handicap_index ?? null }, { onConflict: "cup_id,player_id" })
         : await sb.from("cup_players").delete().eq("cup_id", cup.id).eq("player_id", pid);
       if (check(r.error)) loadCup();
     });
     if ($("cupRefresh")) $("cupRefresh").onclick = async () => {
       if (!confirm("Copy everyone's current league index into the Cup? Strokes in matches not yet finished will follow.")) return;
       const rows = D.cp.map(c => ({ cup_id: cup.id, player_id: c.player_id, side_id: c.side_id, handicap_index: A.hcps.get(c.player_id)?.handicap_index ?? c.handicap_index }));
-      const { error } = await sb.from("cup_players").upsert(rows, { onConflict: "cup_id,player_id" }); if (check(error, "Handicaps refreshed")) loadCup();
+      const { error } = await sb.from("cup_players").upsert(rows, { onConflict: "cup_id,player_id" }); if (!check(error, "Handicaps refreshed")) return;
+      await addSubs(cup.id, new Set(D.cp.map(c => c.player_id))); loadCup();
     };
     $("cupAddRound").onclick = async () => {
       const n = Math.max(0, ...D.rounds.map(r => r.number)) + 1;

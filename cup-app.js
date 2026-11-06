@@ -164,7 +164,9 @@
     const theirs = D.entries.filter(e => e.round_id === r.id && e.side_id === other.id).sort((a, b) => a.slot - b.slot);
     const n = Math.max(f.pairs ? Math.ceil(roster.length / 2) : roster.length, theirs.length ? Math.max(...theirs.map(e => e.slot)) : 0, ...es.map(e => e.slot), 1);
     const idx = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
-    const opt = sel => `<option value="">–</option>` + roster.map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.last_name)}${idx(p.id)}</option>`).join("");
+    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.last_name)}${idx(p.id)}</option>`;
+    const opt = sel => `<option value="">–</option>` + roster.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs (only to even up the sides)">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const vs = slot => { const t = theirs.find(e => e.slot === slot); return t ? `<span class="cvs">vs ${[t.player_id, f.pairs ? t.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ")}</span>` : ""; };
     return `<p class="updated">${r.blind ? "Rank your players. Nobody sees this until the reveal." : theirs.length ? `${esc(other.name)}'s lineup is in. Set yours against each match.` : "Set your lineup in match order. The other captain sees it only after you submit."}</p>
       <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${i + 1}</b><select data-e="player_id">${opt(e?.player_id)}</select>${f.pairs ? `<select data-e="partner_id">${opt(e?.partner_id)}</select>` : ""}${vs(i + 1)}</div>`; }).join("")}
