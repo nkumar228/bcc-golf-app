@@ -397,8 +397,8 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 <header class="bar">
   <div class="bar-inner">
     <div>
-      <h1>BCC 2026 · Event 22</h1>
-      <div class="sub">Tue Aug 25 · Avon Fields Front · Blue tees</div>
+      <h1 id="evTitle">BCC 2026 · Event 22</h1>
+      <div class="sub" id="evSub">Tue Aug 25 · Avon Fields Front · Blue tees</div>
     </div>
     <div class="bar-right">
       <span class="demo">Test</span>
@@ -511,19 +511,20 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   </section>
 
   <section class="view" id="v-score" aria-label="Score" hidden>
-  <div class="match" aria-label="Your group">
+  <div class="card pad" id="grpPickWrap" hidden style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="label" for="grpPick">Scoring for</label><select id="grpPick" style="flex:1;min-width:0"></select></div>
+  <div class="match" id="matchHead" aria-label="Your group">
     <div class="team">#4 Beer Bombers<small>Kumar · Woolum</small></div>
     <div class="vs">with</div>
     <div class="team r">#1 Two Hearted Ail<small>Ebbeler · Ghost</small></div>
   </div>
 
   <details class="card teesheet" id="teeSheet">
-    <summary><span class="label">Full tee sheet · Event 22</span><span class="updated">5 tee times · tap to open</span></summary>
+    <summary><span class="label" id="tsHead">Full tee sheet · Event 22</span><span class="updated" id="tsCount">5 tee times · tap to open</span></summary>
     <div id="teeList"></div>
   </details>
 
   <section style="display:grid;gap:8px" aria-labelledby="hl">
-    <div class="head"><p class="label" id="hl">Hole</p><span class="updated">Tee time 5:08 PM · start hole 1</span></div>
+    <div class="head"><p class="label" id="hl">Hole</p><span class="updated" id="teeInfo">Tee time 5:08 PM · start hole 1</span></div>
     <div class="holes" id="holes" role="tablist"></div>
   </section>
 
@@ -557,10 +558,11 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <div class="card lb" id="lb"></div>
     <p class="updated" style="margin:0">Tap a column to sort; tap again to flip. Pos is always the net standing. Fwy counts par 4s only.</p>
     <div class="head"><span class="updated">Pts update live; final when everyone finishes.</span><button class="linkbtn" id="finish" type="button">Finish everyone's round</button></div>
+    <p class="updated" id="liveNote" hidden style="margin:0"></p>
   </section>
 
 
-  <p class="note">Prototype using real scores from event 22 (Aug 25), pulled from GolfSoftware on Nov 5. Other groups start part-way through so the board looks live. Saving stays on this page and does not change the real league.<br><br>
+  <p class="note" id="scoreNote">Prototype using real scores from event 22 (Aug 25), pulled from GolfSoftware on Nov 5. Other groups start part-way through so the board looks live. Saving stays on this page and does not change the real league.<br><br>
   2027 rules shown here: no player-vs-player matches or singles bonus; ghosts are locked at 36 net and count for the team only, so they don't take a place or earn points; weekly points come from net finish among real golfers. Points come from the points table in your GolfSoftware league setup (1st earns <span id="topPts"></span>, 20th earns 1)<span id="fieldN" hidden></span>, and tied golfers split the points of the places they share. Change the table or the number of teams in GolfSoftware and the app follows. Putts, fairways and greens for other golfers are sample numbers shaped by each player's 2026 season averages, because GolfSoftware only shares per-hole stats with signed-in players; in the real app they are what each golfer enters. Thoney and Wegrzyn had no scores posted for this event.</p>
   </section>
 
@@ -928,21 +930,21 @@ the spirit, intent, and fairness of league competition.</p>
 
 <script>
 (() => {
-  const COURSE = {
+  let COURSE = {
     par:  [4,3,4,4,4,3,4,3,4],
     yds:  [369,153,271,432,354,142,358,177,362],
     hcp:  [5,17,11,1,9,13,7,15,3]
   };
-  const PAR_TOTAL = COURSE.par.reduce((a,b)=>a+b,0);
+  let PAR_TOTAL = COURSE.par.reduce((a,b)=>a+b,0);
   const GHOST_NET = 36;
   // League setup from GolfSoftware (league/GetAll, snapshot Nov 6). The real app reads this live on every load.
-  const SETUP = {
+  let SETUP = {
     teams: 10, playersPerTeam: 2,
     fieldPoints: [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1] // PTIFieldPointsArray, zeros after
   };
-  const TEAMS = {1:"Two Hearted Ail",2:"Who's Your Caddie",3:"Roger and Me",4:"Beer Bombers",5:"Weapons of Grass Destruction",6:"Keepin' it 100",7:"Missing in Action",8:"FIRGIRBIRGIR",9:"Bogey Knights",10:"RahOleg in One"};
+  let TEAMS = {1:"Two Hearted Ail",2:"Who's Your Caddie",3:"Roger and Me",4:"Beer Bombers",5:"Weapons of Grass Destruction",6:"Keepin' it 100",7:"Missing in Action",8:"FIRGIRBIRGIR",9:"Bogey Knights",10:"RahOleg in One"};
   // Snapshot of GolfSoftware livedata.js for event 22 (players with posted scores)
-  const PLAYERS = [
+  let PLAYERS = [
     {id:8,  name:"Kumar, Nitin",      team:4, h:6,  s:[5,3,4,5,4,5,5,4,7], group:true, you:true},
     {id:7,  name:"Woolum, Derek",     team:4, h:2,  s:[7,5,5,5,5,4,5,3,5], group:true},
     {id:2,  name:"Ebbeler, Bob",      team:1, h:14, s:[5,4,4,6,6,4,6,4,7], group:true},
@@ -959,8 +961,12 @@ the spirit, intent, and fairness of league competition.</p>
   const FIELD = SETUP.teams * SETUP.playersPerTeam;
   const GROUP_START = 5;
 
-  const rank = COURSE.hcp.map(v => COURSE.hcp.filter(x => x < v).length + 1);
-  const strokesOn = (h, i) => Math.floor(h / 9) + (rank[i] <= h % 9 ? 1 : 0);
+  const rankOf = si => si.map(v => si.filter(x => x < v).length + 1);
+  let rank = rankOf(COURSE.hcp);
+  // Strokes a player gets on hole i (rank 1 = hardest). Plus handicaps give strokes back on the easiest holes.
+  const strokesOn = (h, i, r = rank) => h < 0 ? (r[i] > 9 + Math.max(h, -9) ? -1 : 0) : Math.floor(h / 9) + (r[i] <= h % 9 ? 1 : 0);
+  let LIVE = null, groupGhosts = [{ team: 1 }];
+  const holeLabel = i => COURSE.holeNo ? COURSE.holeNo[i] : i + 1;
 
   // Sample putts, fairways and greens per hole, shaped by each golfer's 2026 season averages.
   // GolfSoftware only shares per-hole stats with signed-in players; the real app shows what golfers enter.
@@ -976,7 +982,7 @@ the spirit, intent, and fairness of league competition.</p>
     state.putts[pl.id] = Array(9).fill(null); state.fir[pl.id] = Array(9).fill(null); state.gir[pl.id] = Array(9).fill(null);
     for (let i = 0; i < n; i++) fillStats(pl, i);
   });
-  const you = PLAYERS.find(p => p.you);
+  let you = PLAYERS.find(p => p.you);
   state.putts[you.id] = [2,1,2,2,2,null,null,null,null];
   state.fir[you.id] = [true,false,false,true,true,null,null,null,null];
   state.gir[you.id] = [false,true,true,false,true,null,null,null,null];
@@ -984,7 +990,7 @@ the spirit, intent, and fairness of league competition.</p>
   const pending = {};
 
   const $ = id => document.getElementById(id);
-  const group = PLAYERS.filter(p => p.group);
+  let group = PLAYERS.filter(p => p.group);
   const fmtToPar = v => v === 0 ? "E" : (v > 0 ? "+" + v : String(v));
   const cls = v => v < 0 ? "u" : (v > 0 ? "o" : "");
   const LOCK = '<svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
@@ -1006,9 +1012,9 @@ the spirit, intent, and fairness of league competition.</p>
       const b = document.createElement("button");
       b.type = "button"; b.setAttribute("role", "tab");
       b.setAttribute("aria-current", i === state.hole ? "true" : "false");
-      b.setAttribute("aria-label", "Hole " + (i + 1));
+      b.setAttribute("aria-label", "Hole " + holeLabel(i));
       if (state.saved.has(i)) b.classList.add("done");
-      b.innerHTML = (i + 1) + '<span class="dot"></span>';
+      b.innerHTML = holeLabel(i) + '<span class="dot"></span>';
       b.onclick = () => { state.hole = i; loadPending(); renderAll(); };
       h.appendChild(b);
     });
@@ -1016,20 +1022,20 @@ the spirit, intent, and fairness of league competition.</p>
 
   function renderHole() {
     const i = state.hole;
-    $("holeNo").innerHTML = "<span>HOLE</span>" + (i + 1);
+    $("holeNo").innerHTML = "<span>HOLE</span>" + holeLabel(i);
     $("fPar").textContent = COURSE.par[i];
     $("fYds").textContent = COURSE.yds[i];
     $("fHcp").textContent = COURSE.hcp[i];
     const rows = $("rows"); rows.innerHTML = "";
     group.forEach(pl => {
-      const st = strokesOn(pl.h, i);
+      const st = strokesOn(pl.h, i, pl.rank);
       const v = pending[pl.id];
       const diff = v - COURSE.par[i];
       const row = document.createElement("div");
       row.className = "prow" + (pl.you ? " you" : "");
       row.innerHTML = `
         <div class="pname">${pl.name}${pl.you ? " (you)" : ""}
-          <small>${TEAMS[pl.team]} · hcp ${pl.h}${st ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : ""}</small></div>
+          <small>${TEAMS[pl.team]} · hcp ${pl.h}${pl.tee && pl.tee !== "Blue" ? ` · ${pl.tee}` : ""}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small></div>
         <div class="step" role="group" aria-label="Strokes for ${pl.name}">
           <button type="button" aria-label="One fewer">−</button>
           <output class="${cls(diff)}">${v}</output>
@@ -1059,13 +1065,15 @@ the spirit, intent, and fairness of league competition.</p>
     const cap = document.createElement("div");
     cap.className = "capnote"; cap.textContent = `Max score here is ${2 * COURSE.par[i]} (double par). Pick up once you reach it.`;
     rows.appendChild(cap);
-    const gr = document.createElement("div");
-    gr.className = "prow ghostrow";
-    gr.innerHTML = `
-      <div class="pname">Ghost<small>Two Hearted Ail · fills the open spot</small></div>
-      <div class="locked" aria-label="Ghost score locked at ${GHOST_NET} net">${LOCK}<span class="num">${GHOST_NET}</span><small>net</small></div>`;
-    rows.appendChild(gr);
-    $("saveBtn").textContent = state.saved.has(i) ? `Update hole ${i + 1}` : `Save hole ${i + 1}`;
+    groupGhosts.forEach(g => {
+      const gr = document.createElement("div");
+      gr.className = "prow ghostrow";
+      gr.innerHTML = `
+        <div class="pname">Ghost<small>${TEAMS[g.team] || ""} · fills the open spot</small></div>
+        <div class="locked" aria-label="Ghost score locked at ${GHOST_NET} net">${LOCK}<span class="num">${GHOST_NET}</span><small>net</small></div>`;
+      rows.appendChild(gr);
+    });
+    $("saveBtn").textContent = state.saved.has(i) ? `Update hole ${holeLabel(i)}` : `Save hole ${holeLabel(i)}`;
     $("prev").disabled = i === 0;
   }
 
@@ -1077,7 +1085,7 @@ the spirit, intent, and fairness of league competition.</p>
   }
 
   function renderCard() {
-    let html = "<tr><th>Hole</th>" + COURSE.par.map((_, i) => `<th>${i + 1}</th>`).join("") + "<th>Out</th><th>Net</th></tr>";
+    let html = "<tr><th>Hole</th>" + COURSE.par.map((_, i) => `<th>${holeLabel(i)}</th>`).join("") + `<th>${COURSE.holeNo && COURSE.holeNo[0] > 9 ? "In" : "Out"}</th><th>Net</th></tr>`;
     html += "<tr><td style='color:var(--muted)'>Par</td>" + COURSE.par.map(p => `<td style="color:var(--muted)">${p}</td>`).join("") + `<td class="tot" style="color:var(--muted)">${PAR_TOTAL}</td><td></td></tr>`;
     group.forEach(pl => {
       const s = state.scores[pl.id];
@@ -1085,7 +1093,7 @@ the spirit, intent, and fairness of league competition.</p>
       const done = s.every(v => v != null);
       html += `<tr><td>${pl.name.split(",")[0]}</td>` + s.map((v, i) => `<td>${mark(v, COURSE.par[i])}</td>`).join("") + `<td class="tot">${tot || ""}</td><td class="tot">${done ? tot - pl.h : ""}</td></tr>`;
     });
-    html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${GHOST_NET}</td></tr>`;
+    groupGhosts.forEach(() => { html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${GHOST_NET}</td></tr>`; });
     $("sc").innerHTML = html;
   }
 
@@ -1093,7 +1101,7 @@ the spirit, intent, and fairness of league competition.</p>
     const rows = PLAYERS.map(pl => {
       const s = state.scores[pl.id];
       let thru = 0, gross = 0, parThru = 0, strokes = 0;
-      s.forEach((v, i) => { if (v != null) { thru++; gross += v; parThru += COURSE.par[i]; strokes += strokesOn(pl.h, i); } });
+      s.forEach((v, i) => { if (v != null) { thru++; gross += v; parThru += COURSE.par[i]; strokes += strokesOn(pl.h, i, pl.rank); } });
       let putts = 0, fir = 0, firOpp = 0, gir = 0;
       s.forEach((v, i) => { if (v != null) { putts += state.putts[pl.id][i] || 0; if (COURSE.par[i] > 3) { firOpp++; if (state.fir[pl.id][i]) fir++; } if (state.gir[pl.id][i]) gir++; } });
       return { pl, thru, gross, grossToPar: gross - parThru, netToPar: gross - strokes - parThru, net: gross - pl.h, putts, fir, firOpp, gir };
@@ -1174,8 +1182,21 @@ the spirit, intent, and fairness of league competition.</p>
   function stamp() { tick = 0; $("upd").textContent = "Updated just now"; }
   setInterval(() => { tick++; $("upd").textContent = `Updated ${tick} min ago`; }, 60000);
 
-  $("saveBtn").onclick = () => {
+  $("saveBtn").onclick = async () => {
     const i = state.hole;
+    if (LIVE) {
+      const entries = group.map(pl => ({ pid: pl.id, strokes: pending[pl.id], ...pending.st[pl.id] }));
+      $("saveBtn").disabled = true; $("toast").textContent = "Saving…";
+      const err = await LIVE.save(i, entries);
+      $("saveBtn").disabled = false;
+      if (err) { $("toast").textContent = "Couldn't save. Check your signal and tap Save again."; return; }
+      entries.forEach(e => { state.scores[e.pid][i] = e.strokes; state.putts[e.pid][i] = e.putts; state.fir[e.pid][i] = e.fir; state.gir[e.pid][i] = e.gir; });
+      state.saved.add(i);
+      $("toast").textContent = `Hole ${holeLabel(i)} saved for everyone.`;
+      if (i < 8) state.hole = i + 1;
+      loadPending(); stamp(); renderAll(group.map(p => p.id));
+      return;
+    }
     group.forEach(pl => { state.scores[pl.id][i] = pending[pl.id]; });
     group.forEach(pl => { const ps = pending.st[pl.id]; state.putts[pl.id][i] = ps.putts; state.fir[pl.id][i] = ps.fir; state.gir[pl.id][i] = ps.gir; });
     state.saved.add(i);
@@ -1195,6 +1216,29 @@ the spirit, intent, and fairness of league competition.</p>
     loadPending(); stamp();
     $("toast").textContent = "Everyone's real Aug 25 scores are in. Points are now final.";
     renderAll(PLAYERS.map(p => p.id));
+  };
+
+  // Live mode: the signed-in app swaps the demo data for this week's real event.
+  window.BCCScore = {
+    setLive(d, opts = {}) {
+      const first = !LIVE, groupChanged = !LIVE || LIVE.groupKey !== d.groupKey;
+      LIVE = d; COURSE = d.course; PAR_TOTAL = COURSE.par.reduce((a, b) => a + b, 0); rank = rankOf(COURSE.hcp);
+      SETUP = { ...SETUP, fieldPoints: d.points }; TEAMS = d.teams; PLAYERS = d.players;
+      group = PLAYERS.filter(p => p.group); you = PLAYERS.find(p => p.you) || group[0]; groupGhosts = d.ghosts;
+      PLAYERS.forEach(pl => {
+        const sc = d.scores[pl.id] || {};
+        state.scores[pl.id] = COURSE.holeNo.map(h => sc[h]?.strokes ?? null);
+        state.putts[pl.id] = COURSE.holeNo.map(h => sc[h]?.putts ?? null);
+        state.fir[pl.id] = COURSE.holeNo.map(h => sc[h]?.fairway ?? null);
+        state.gir[pl.id] = COURSE.holeNo.map(h => sc[h]?.green ?? null);
+      });
+      state.saved = new Set(COURSE.par.map((_, i) => i).filter(i => group.length && group.every(pl => state.scores[pl.id][i] != null)));
+      if (groupChanged) { const n = COURSE.par.findIndex((_, i) => !state.saved.has(i)); state.hole = n < 0 ? 8 : n; loadPending(); }
+      if (first) { $("finish").hidden = true; $("scoreNote").hidden = true; $("toast").textContent = ""; }
+      if (!opts.quiet || groupChanged) renderAll(); else { renderHoles(); renderCard(); renderBoard(); if (!opts.keepPending) renderHole(); }
+      stamp();
+    },
+    isLive: () => !!LIVE
   };
 
   $("fieldN").textContent = FIELD;
@@ -1299,6 +1343,122 @@ the spirit, intent, and fairness of league competition.</p>
   }
   window.addEventListener("hashchange", route); route();
   applySession();
+
+  // ---------- Live scoring: this week's event from the league database ----------
+  (() => {
+    const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const fmtDate = d => { const x = new Date(d + "T12:00:00"); return `${DOW[x.getDay()]} ${MON[x.getMonth()]} ${x.getDate()}`; };
+    const fmtTime = t => { const [h, m] = t.split(":").map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, "0")} PM`; };
+    const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    let ctx = null, pickedMatch = null, timer = null, wasReal = false;
+
+    async function loadEvent() {
+      const ses = session; if (!ses || !ses.real || !sb) return;
+      const { data: season } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle();
+      if (!season) return;
+      const { data: evs } = await sb.from("events").select("*").eq("season_id", season.id).order("play_date");
+      const open = (evs || []).filter(e => e.status !== "rained_out");
+      const ev = open.find(e => e.status === "in_progress") || open.find(e => e.play_date >= localToday() && e.status !== "final") || open.at(-1);
+      if (!ev) return;
+      const [{ data: course }, { data: tees }, { data: teams }, { data: matchups }, { data: lineups }, { data: hcps }] = await Promise.all([
+        sb.from("courses").select("name").eq("id", ev.course_id).maybeSingle(),
+        sb.from("tees").select("id,name,rating,slope,par,tee_holes(hole,par,yards,stroke_index)").eq("course_id", ev.course_id),
+        sb.from("teams").select("id,number,name,team_players(player_id,players(id,first_name,last_name,default_tee))").eq("season_id", season.id).order("number"),
+        sb.from("matchups").select("*").eq("event_id", ev.id).order("tee_time").order("id"),
+        sb.from("lineups").select("team_id,player_id,kind,tee,players!lineups_player_id_fkey(id,first_name,last_name,default_tee)").eq("event_id", ev.id),
+        sb.from("player_handicaps").select("player_id,handicap_index")
+      ]);
+      ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])) };
+      await refreshScores(false);
+    }
+
+    function rosterOf(team) {
+      const lu = ctx.lineups.filter(l => l.team_id === team.id);
+      if (lu.length) return lu.map(l => l.kind === "ghost" ? { ghost: true } : { p: l.players, tee: l.tee || l.players?.default_tee, sub: l.kind === "sub" });
+      return (team.team_players || []).map(tp => ({ p: tp.players, tee: tp.players?.default_tee }));
+    }
+
+    function build(scoreRows) {
+      const { season, ev, course, tees, teams, matchups } = ctx;
+      const teeBy = n => tees.find(t => t.name === n) || tees.find(t => t.name === "Blue") || tees[0];
+      const holesOf = t => [...(t?.tee_holes || [])].sort((a, b) => a.hole - b.hole);
+      const teamById = new Map(teams.map(t => [t.id, t]));
+      const players = [], ghostsByTeam = {};
+      const meId = session.playerId;
+      const inMatch = new Map();
+      matchups.forEach(m => [m.team_a, m.team_b].forEach(tid => inMatch.set(tid, m)));
+      const myMatch = matchups.find(m => [m.team_a, m.team_b].some(tid => rosterOf(teamById.get(tid) || {}).some(r => r.p?.id === meId)));
+      const match = matchups.find(m => m.id === pickedMatch) || myMatch || matchups[0];
+      teams.forEach(t => {
+        const m = inMatch.get(t.id); if (!m) return;
+        rosterOf(t).forEach(r => {
+          if (r.ghost) { (ghostsByTeam[t.id] = ghostsByTeam[t.id] || []).push({ team: t.number }); return; }
+          if (!r.p) return;
+          const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
+          const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
+          players.push({ id: r.p.id, name: `${r.p.last_name}, ${r.p.first_name}`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub });
+        });
+      });
+      const mine = players.find(p => p.you) || players.find(p => p.group);
+      const rk = p => p.you ? 0 : (mine && p.teamId === mine.teamId ? 1 : 2);
+      players.sort((x, y) => rk(x) - rk(y));
+      const myTee = teeBy(mine?.tee || "Blue"), hs = holesOf(myTee);
+      const scores = {};
+      (scoreRows || []).forEach(r => { (scores[r.player_id] = scores[r.player_id] || {})[r.hole] = r; });
+      const teamName = t => t ? `#${t.number} ${esc(t.name)}` : "";
+      const names = tid => { const t = teamById.get(tid); return t ? rosterOf(t).map(r => r.ghost ? "Ghost" : esc(r.p?.last_name || "")).join(" · ") : ""; };
+      // header and group card
+      $("evTitle").textContent = `${season.name} · Week ${ev.number}`;
+      $("evSub").textContent = `${fmtDate(ev.play_date)} · ${course?.name || ""} · ${myTee?.name || "Blue"} tees`;
+      if (match) {
+        const a = teamById.get(match.team_a), b = teamById.get(match.team_b);
+        $("matchHead").innerHTML = `<div class="team">${teamName(a)}<small>${names(match.team_a)}</small></div><div class="vs">with</div><div class="team r">${teamName(b)}<small>${names(match.team_b)}</small></div>`;
+        $("teeInfo").textContent = `Tee time ${fmtTime(match.tee_time)} · start hole ${hs[0]?.hole ?? 1}`;
+      } else {
+        $("matchHead").innerHTML = `<div class="team">No tee times yet<small>The tee sheet for this week isn't set.</small></div>`;
+        $("teeInfo").textContent = "";
+      }
+      $("grpPickWrap").hidden = matchups.length < 2;
+      $("grpPick").innerHTML = matchups.map(m => `<option value="${m.id}"${match && m.id === match.id ? " selected" : ""}>${fmtTime(m.tee_time)} · ${teamName(teamById.get(m.team_a))} & ${teamName(teamById.get(m.team_b))}${m === myMatch ? " (yours)" : ""}</option>`).join("");
+      $("tsHead").textContent = `Full tee sheet · Week ${ev.number}`;
+      $("tsCount").textContent = `${matchups.length} tee time${matchups.length === 1 ? "" : "s"} · tap to open`;
+      $("teeList").innerHTML = matchups.map(m => `<div class="card pad" style="padding:10px 12px"><b>${fmtTime(m.tee_time)}</b> · ${teamName(teamById.get(m.team_a))} <small class="updated">(${names(m.team_a)})</small> & ${teamName(teamById.get(m.team_b))} <small class="updated">(${names(m.team_b)})</small></div>`).join("") || '<p class="updated">No tee times yet.</p>';
+      $("liveNote").hidden = false;
+      $("liveNote").textContent = ev.status === "final" ? "This week is final. Scores can only be changed by an admin." : "Scores save to the league for everyone. The board refreshes every 20 seconds.";
+      const groupGhosts = match ? [match.team_a, match.team_b].flatMap(tid => ghostsByTeam[tid] || []) : [];
+      return {
+        groupKey: match ? match.id : 0,
+        course: { par: hs.map(x => x.par), yds: hs.map(x => x.yards), hcp: hs.map(x => x.stroke_index), holeNo: hs.map(x => x.hole) },
+        points: season.points_table, teams: Object.fromEntries(teams.map(t => [t.number, t.name])),
+        players, ghosts: groupGhosts, scores,
+        save: async (i, entries) => {
+          const hole = hs[i].hole, par = hs[i].par;
+          const rows = entries.map(e => ({ event_id: ev.id, player_id: e.pid, hole, strokes: e.strokes, putts: e.putts, fairway: par > 3 ? !!e.fir : null, green: !!e.gir, updated_at: new Date().toISOString() }));
+          const { error } = await sb.from("scores").upsert(rows, { onConflict: "event_id,player_id,hole" });
+          return error;
+        }
+      };
+    }
+
+    async function refreshScores(quiet) {
+      if (!ctx) return;
+      const { data, error } = await sb.from("scores").select("player_id,hole,strokes,putts,fairway,green").eq("event_id", ctx.ev.id);
+      if (error) return;
+      window.BCCScore.setLive(build(data), { quiet, keepPending: quiet });
+    }
+
+    $("grpPick").onchange = () => { pickedMatch = +$("grpPick").value; refreshScores(false); };
+    const tick = () => { if (ctx && location.hash === "#score" && document.visibilityState === "visible") refreshScores(true); };
+    window.addEventListener("bcc-session", () => {
+      const real = !!(session && session.real);
+      if (wasReal && !real) { location.reload(); return; }
+      wasReal = real;
+      if (real && window.BCCScore) { loadEvent(); if (!timer) timer = setInterval(tick, 20000); }
+    });
+    window.addEventListener("hashchange", () => { if (location.hash === "#score") tick(); });
+    if (session && session.real) { wasReal = true; loadEvent(); timer = setInterval(tick, 20000); }
+  })();
 
   // ---------- How my handicap is calculated ----------
   (() => {
