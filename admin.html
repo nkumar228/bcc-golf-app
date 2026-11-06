@@ -136,6 +136,17 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addMatch">Add a tee time</button></div>
     </section>
 
+    <section class="card" data-panel="teesheet" hidden>
+      <h2>Build the season</h2>
+      <p class="note">Fills every week that isn't final. Each team plays every other team once in the first half and again in the second half, so a rematch is half a season away. Tee times rotate each week so no team always goes first or last. You can still change any week by hand afterwards.</p>
+      <div class="row">
+        <label for="bFirst" style="font-weight:600">First tee time</label><input type="time" id="bFirst" value="17:00">
+        <label for="bGap" style="font-weight:600">Minutes apart</label><input class="w-num" type="number" id="bGap" value="8" min="1">
+        <button class="btn" type="button" id="buildSeason">Build the season</button>
+      </div>
+      <div id="buildOut" style="margin-top:12px"></div>
+    </section>
+
     <section class="card" data-panel="courses" hidden>
       <h2>Courses</h2>
       <p class="note">Rating, slope and par per tee for each nine. These drive handicaps.</p>
@@ -381,6 +392,63 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
     const { data, error } = await sb.from("matchups").insert({ event_id: +$("tsEvent").value, tee_time: time, start_hole: 1, team_a: a, team_b: b }).select().single();
     if (check(error, "Tee time added")) { matches.push(data); renderMatches(); }
   };
+  // Double round robin by the circle method; second half repeats the first with home/away swapped.
+  function roundRobin(ids) {
+    const t = ids.length % 2 ? [...ids, null] : [...ids], n = t.length, rounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const pairs = [];
+      for (let i = 0; i < n / 2; i++) { const a = t[i], b = t[n - 1 - i]; if (a != null && b != null) pairs.push(r % 2 && i === 0 ? [b, a] : [a, b]); }
+      rounds.push(pairs);
+      t.splice(1, 0, t.pop());
+    }
+    return rounds;
+  }
+  function plan(weeks, ids) {
+    const rounds = roundRobin(ids), R = rounds.length, used = {};
+    return weeks.map((e, w) => {
+      const pairs = rounds[w % R].map(([a, b]) => Math.floor(w / R) % 2 ? [b, a] : [a, b]);
+      return { event: e, pairs: spreadSlots(pairs, used) };
+    });
+  }
+  // Order a week's matches so every team gets each tee-time slot about equally often over the season.
+  function spreadSlots(pairs, used) {
+    const perms = a => a.length < 2 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p]));
+    const cost = order => order.reduce((c, [a, b], i) => c + ((used[a]?.[i] || 0) + 1) ** 2 + ((used[b]?.[i] || 0) + 1) ** 2, 0);
+    let best = pairs;
+    if (pairs.length <= 7) { let bc = Infinity; for (const o of perms(pairs)) { const c = cost(o); if (c < bc) { bc = c; best = o; } } }
+    best.forEach(([a, b], i) => [a, b].forEach(t => { used[t] = used[t] || []; used[t][i] = (used[t][i] || 0) + 1; }));
+    return best;
+  }
+  const hhmm = (start, add) => { const [h, m] = start.split(":").map(Number), t = h * 60 + m + add; return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+  $("buildSeason").onclick = async () => {
+    if (teams.length < 2) return toast("Add the teams first (Teams tab).", true);
+    const weeks = events.filter(e => e.status !== "final" && e.status !== "rained_out");
+    if (!weeks.length) return toast("No open weeks to fill.", true);
+    const first = $("bFirst").value || "17:00", gap = +$("bGap").value || 8;
+    const R = teams.length % 2 ? teams.length : teams.length - 1;
+    const msg = `Fill tee sheets for ${weeks.length} weeks (weeks ${weeks[0].number} to ${weeks.at(-1).number})?\n\n` +
+      (weeks.length < R * 2 ? `Note: ${teams.length} teams need ${R * 2} weeks for everyone to meet twice; you have ${weeks.length}, so some pairs meet only once.\n\n` : "") +
+      "Any tee times already set for these weeks are replaced.";
+    if (!confirm(msg)) return;
+    $("buildSeason").disabled = true;
+    const ids = weeks.map(e => e.id);
+    const del = await sb.from("matchups").delete().in("event_id", ids);
+    if (!check(del.error, "")) { $("buildSeason").disabled = false; return; }
+    const rows = plan(weeks, teams.map(t => t.id)).flatMap(({ event, pairs }) => pairs.map(([a, b], i) => ({ event_id: event.id, tee_time: hhmm(first, i * gap), start_hole: 1, team_a: a, team_b: b })));
+    const { error } = await sb.from("matchups").insert(rows);
+    $("buildSeason").disabled = false;
+    if (!check(error, `Built ${weeks.length} weeks`)) return;
+    showGrid(rows); loadMatches();
+  };
+  function showGrid(rows) {
+    const byEv = new Map(); rows.forEach(r => (byEv.get(r.event_id) || byEv.set(r.event_id, []).get(r.event_id)).push(r));
+    const tn = id => teams.find(t => t.id === id)?.number ?? "?";
+    const meet = {}; rows.forEach(r => { const k = [tn(r.team_a), tn(r.team_b)].sort((x, y) => x - y).join("-"); meet[k] = (meet[k] || 0) + 1; });
+    const counts = Object.values(meet), lo = Math.min(...counts), hi = Math.max(...counts);
+    $("buildOut").innerHTML = `<p class="note" style="margin:0 0 8px"><b>Check:</b> every pair of teams meets ${lo === hi ? lo + " times" : lo + " to " + hi + " times"}.</p><div class="scroll"><table><thead><tr><th>Wk</th><th>Date</th>${(byEv.values().next().value || []).map((r, i) => `<th>${r.tee_time.slice(0, 5)}</th>`).join("")}</tr></thead><tbody>` +
+      events.filter(e => byEv.has(e.id)).map(e => `<tr><td><b>${e.number}</b></td><td>${fmtDate(e.play_date)}</td>${byEv.get(e.id).map(r => `<td>${tn(r.team_a)} v ${tn(r.team_b)}</td>`).join("")}</tr>`).join("") + `</tbody></table></div>`;
+  }
+
   $("tsCopy").onclick = async () => {
     const i = events.findIndex(e => e.id === +$("tsEvent").value);
     if (i < 1) return toast("There's no week before this one.", true);
