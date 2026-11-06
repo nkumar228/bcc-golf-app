@@ -105,6 +105,7 @@ tr.inc td { color: var(--bad); }
       <button type="button" data-tab="courses">Courses</button>
       <button type="button" data-tab="season">Season rules</button>
       <button type="button" data-tab="seasons">Seasons</button>
+      <button type="button" data-tab="cup">Queen City Cup</button>
       <label class="row" style="gap:6px;margin-left:auto;font-weight:600">Season <select id="seasonPick"></select></label>
     </nav>
 
@@ -216,6 +217,13 @@ tr.inc td { color: var(--bad); }
       </form>
     </section>
 
+    <section class="card" data-panel="cup" hidden>
+      <h2>Queen City Cup</h2>
+      <p class="note">Match play between two sides, run by Article XII of the rulebook. Captains pick formats and enter lineups in the app; a lineup stays hidden until the other captain responds or you reveal the round.</p>
+      <div class="row"><label for="cupPick" style="font-weight:600">Cup</label><select id="cupPick"></select><button class="btn secondary" type="button" id="cupNew">Start a new Cup</button></div>
+      <div id="cupBody" style="margin-top:12px"></div>
+    </section>
+
     <section class="card" data-panel="season" hidden>
       <h2>Season rules</h2>
       <p class="note">These numbers drive the weekly points, team results and standings.</p>
@@ -300,6 +308,7 @@ tr.inc td { color: var(--bad); }
       ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
     }
     renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots(); renderWeekEvents();
+    if (window.BCCAdmin.onLoad) window.BCCAdmin.onLoad();
   }
   $("seasonPick").onchange = () => loadAll(+$("seasonPick").value);
   const teamOf = pid => { const m = members.find(m => m.player_id === pid); return m && teams.find(t => t.id === m.team_id); };
@@ -830,8 +839,11 @@ tr.inc td { color: var(--bad); }
     loadAll(ns.id);
   };
 
+  window.BCCAdmin = { sb, $, esc, toast, check, get players() { return players; }, get courses() { return courses; }, get hcps() { return hcps; } };
   start();
 })();
 </script>
+<script src="cup.js"></script>
+<script src="admin-cup.js"></script>
 </body>
 </html>
