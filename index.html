@@ -1305,7 +1305,7 @@ the spirit, intent, and fairness of league competition.</p>
     const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const USED_FOR = [1,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,7,8]; // rounds used when a player has 1..20 rounds
     const fx = (n, d = 1) => (+n).toFixed(d);
-    const trunc = (n, d) => Math.trunc(n * 10 ** d + 1e-9) / 10 ** d;
+    const r2 = n => Math.round(n * 100 + 1e-9) / 100;
     const variation = r => Math.round((r.adjusted_gross - r.rating) * 113 / r.slope * 10 + 1e-9) / 10;
     const label = r => r.played_on ? `${new Date(r.played_on + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}${r.label ? " · " + r.label : ""}`
       : (/^2026 event (\d+)/.test(r.label || "") ? `2026 · Week ${r.label.match(/\d+$/)[0]}` : "Before 2026");
@@ -1315,18 +1315,22 @@ the spirit, intent, and fairness of league competition.</p>
     async function load(pid) {
       const body = $("hxBody"), real = session && session.real && sb;
       if (!session) { body.innerHTML = '<p class="updated">Sign in to see your handicap.</p>'; return; }
-      let rounds, name, set = { handicap_rounds: 20, handicap_best: 8, handicap_percent: 100 };
+      let rounds, name, tees = [{ course: "Front", name: "Blue", slope: 111 }, { course: "Back", name: "Blue", slope: 111 }], set = { handicap_rounds: 20, handicap_best: 8, handicap_percent: 100 };
       if (!real) { rounds = DEMO.rounds; name = DEMO.name; }
       else {
         body.innerHTML = '<p class="updated">Loading…</p>';
         const id = pid || session.playerId;
-        const [{ data: rs, error }, { data: ss }, { data: pl }] = await Promise.all([
+        const [{ data: rs, error }, { data: ss }, { data: pl }, { data: ts }] = await Promise.all([
           sb.from("rounds").select("id,played_on,seq,label,adjusted_gross,rating,slope").eq("player_id", id),
           sb.from("seasons").select("handicap_rounds,handicap_best,handicap_percent").eq("is_current", true).maybeSingle(),
-          sb.from("players").select("first_name,last_name").eq("id", id).maybeSingle()
+          sb.from("players").select("first_name,last_name,default_tee").eq("id", id).maybeSingle(),
+          sb.from("tees").select("name,slope,courses(name)")
         ]);
         if (error) { body.innerHTML = '<p class="updated">Couldn\'t load your rounds. Check your signal and try again.</p>'; return; }
         rounds = rs || []; if (ss) set = ss; name = pl ? `${pl.first_name} ${pl.last_name}` : "";
+        const myTee = (pl && pl.default_tee) || "Blue";
+        const mine = (ts || []).filter(t => t.name === myTee).map(t => ({ course: (t.courses?.name || "").replace("Avon Fields - ", ""), name: t.name, slope: t.slope }));
+        if (mine.length) tees = mine.sort((a, b) => a.course === "Front" ? -1 : b.course === "Front" ? 1 : 0);
         if (session.admin && !roster) {
           const { data: all } = await sb.from("players").select("id,first_name,last_name").eq("active", true).order("last_name").order("first_name");
           roster = all || [];
@@ -1338,10 +1342,10 @@ the spirit, intent, and fairness of league competition.</p>
       }
       const you = !pid || pid === session.playerId;
       $("hxTitle").textContent = you ? "How your handicap is calculated" : `How ${name}'s handicap is calculated`;
-      render(rounds, set, you ? "you" : name.split(" ")[0]);
+      render(rounds, set, you ? "you" : name.split(" ")[0], tees);
     }
 
-    function render(all, set, who) {
+    function render(all, set, who, tees) {
       const N = set.handicap_rounds, K = set.handicap_best, pct = set.handicap_percent;
       const body = $("hxBody"), You = who === "you" ? "You" : who, your = who === "you" ? "your" : who + "'s";
       if (!all.length) { body.innerHTML = `<p>${You} ${who === "you" ? "don't" : "doesn't"} have any rounds yet. A handicap starts after the first round is finished.</p>`; return; }
@@ -1350,7 +1354,7 @@ the spirit, intent, and fairness of league competition.</p>
       const n = recent.length, k = n >= N ? K : USED_FOR[Math.min(n, 20) - 1];
       const best = [...recent].sort((a, b) => a.v - b.v || a.i - b.i).slice(0, k);
       const usedSet = new Set(best.map(r => r.i));
-      const sum = Math.round(best.reduce((t, r) => t + r.v, 0) * 10) / 10, pre = trunc(sum / k, 3), idx = trunc(pre * pct / 100, 4);
+      const sum = Math.round(best.reduce((t, r) => t + r.v, 0) * 10) / 10, pre = r2(sum / k), idx = r2(pre * pct / 100);
       const eg = recent[0];
       body.innerHTML = `
         <p class="updated" style="margin-top:4px">${You === "You" ? "Your" : your.replace(/^./, c => c.toUpperCase())} handicap index</p>
@@ -1373,10 +1377,15 @@ the spirit, intent, and fairness of league competition.</p>
         <p>${n >= N ? `Of those ${N}, the <b>${K} lowest</b> variations count and the other ${N - K} are dropped.` : `With ${n} round${n === 1 ? "" : "s"}, the league uses the <b>${k} lowest</b> (the count grows as rounds are added, up to ${K} of ${N}).`} They're the rows with a ✓ above.</p>
 
         <div class="step"><span class="n">4</span><h3>Average them</h3></div>
-        <div class="math">${best.map(r => fx(r.v)).sort((a, b) => a - b).join(" + ")} = ${fx(sum)}<br>${fx(sum)} ÷ ${k} = <b>${fx(pre, 3)}</b></div>
+        <div class="math">${best.map(r => fx(r.v)).sort((a, b) => a - b).join(" + ")} = ${fx(sum)}<br>${fx(sum)} ÷ ${k} = ${fx(sum / k, 4).replace(/0+$/, "").replace(/\.$/, "")} → <b>${fx(pre, 2)}</b> pre-handicap</div>
+        <p class="updated">Rounded to 2 decimals.</p>
 
         <div class="step"><span class="n">5</span><h3>Apply the league percentage</h3></div>
-        <div class="math">${fx(pre, 3)} × ${pct}% = <b>${fx(idx, 2)}</b> handicap index</div>
+        <div class="math">${fx(pre, 2)} × ${pct}% = <b>${fx(idx, 2)}</b> handicap index</div>
+
+        <div class="step"><span class="n">6</span><h3>Turn it into strokes for the night</h3></div>
+        <p>On league night the index is adjusted for the tees ${who === "you" ? "you play" : "they play"} (${esc(tees[0]?.name || "Blue")}) and rounded to a whole number. That's ${your} handicap on the scorecard.</p>
+        <div class="math">${tees.map(t => `${esc(t.course)} nine: ${fx(idx, 2)} × ${t.slope} ÷ 113 = ${fx(idx * t.slope / 113, 2)} → <b>${Math.round(idx * t.slope / 113 + 1e-9)}</b>`).join("<br>")}</div>
         <p class="updated">Scores are adjusted gross scores. Rounds before 2027 came over from GolfSoftware and give the same result it did.</p>`;
     }
 

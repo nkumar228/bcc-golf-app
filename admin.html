@@ -275,7 +275,7 @@ tr.dragging { background: var(--green-soft); }
         <td><b>${esc(pname(p))}</b></td>
         <td><input class="w-email" type="email" data-f="email" value="${esc(p.email)}" placeholder="add email"></td>
         <td>${t ? `#${t.number} ${esc(t.name)}` : '<span class="note">Sub</span>'}</td>
-        <td>${hcps.has(p.id) ? `<b>${(+hcps.get(p.id).pre_handicap).toFixed(1)}</b> <span class="note" title="rounds used of rounds counted">${hcps.get(p.id).rounds_used}/${hcps.get(p.id).rounds_available}</span>` : '<span class="note">—</span>'}</td>
+        <td>${hcps.has(p.id) ? `<b>${(+hcps.get(p.id).pre_handicap).toFixed(2)}</b> <span class="note" title="rounds used of rounds counted">${hcps.get(p.id).rounds_used}/${hcps.get(p.id).rounds_available}</span>` : '<span class="note">—</span>'}</td>
         <td><select data-f="default_tee">${["Blue","White","Gold"].map(x => `<option${x === p.default_tee ? " selected" : ""}>${x}</option>`).join("")}</select></td>
         <td><input type="checkbox" data-f="is_admin"${p.is_admin ? " checked" : ""} aria-label="Admin"></td>
         <td><input type="checkbox" data-f="active"${p.active ? " checked" : ""} aria-label="Active"></td>
