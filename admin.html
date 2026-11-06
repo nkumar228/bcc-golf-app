@@ -59,6 +59,14 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
 .grip { cursor: grab; touch-action: none; user-select: none; font-size: 20px; color: var(--muted); padding: 4px 6px; display: inline-block; }
 tr.dragging { background: var(--green-soft); }
 .btn.mv { padding: 5px 9px; }
+.lu { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
+.lu .box { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.lu .box h4 { margin: 0 0 6px; font-size: 14px; }
+.lu .slot { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.lu .slot select:first-child { flex: 1; min-width: 0; }
+input.hs { width: 38px; padding: 5px 2px; text-align: center; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.inc td { color: var(--bad); }
 #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; }
 </style>
 </head>
@@ -93,6 +101,7 @@ tr.dragging { background: var(--green-soft); }
       <button type="button" data-tab="teams">Teams</button>
       <button type="button" data-tab="schedule">Schedule</button>
       <button type="button" data-tab="teesheet">Tee sheet</button>
+      <button type="button" data-tab="week">Lineups &amp; results</button>
       <button type="button" data-tab="courses">Courses</button>
       <button type="button" data-tab="season">Season rules</button>
       <button type="button" data-tab="seasons">Seasons</button>
@@ -159,6 +168,36 @@ tr.dragging { background: var(--green-soft); }
       <h2>Courses</h2>
       <p class="note">Rating, slope and par per tee for each nine. These drive handicaps.</p>
       <div class="scroll"><table id="teesTable"></table></div>
+    </section>
+
+    <section class="card" data-panel="week" hidden>
+      <h2>Lineups &amp; results</h2>
+      <div class="row" style="margin-bottom:8px">
+        <label for="wkEvent" style="font-weight:600">Week</label>
+        <select id="wkEvent"></select>
+        <span id="wkStatus"></span>
+      </div>
+      <p class="note">Each team plays its two regulars unless you change it here. Pick a sub from the list, or Ghost (locked at the season's ghost net score). Scores can be fixed in the grid; finalizing saves the points and adds each round to the player's handicap.</p>
+      <div id="wkLineups"></div>
+    </section>
+
+    <section class="card" data-panel="week" hidden>
+      <h2>Scores</h2>
+      <p class="note">Every golfer in the lineups, hole by hole. Type to fix a score; it saves when you leave the box.</p>
+      <div class="scroll"><table id="wkScores"></table></div>
+    </section>
+
+    <section class="card" data-panel="week" hidden>
+      <h2>Results</h2>
+      <p class="note" id="wkRule"></p>
+      <div class="scroll"><table id="wkResults"></table></div>
+      <h3 style="margin:16px 0 8px;font-size:15px">Teams</h3>
+      <div class="scroll"><table id="wkTeams"></table></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" type="button" id="wkFinal">Finalize this week</button>
+        <button class="btn secondary" type="button" id="wkReopen" hidden>Reopen this week</button>
+        <span class="err" id="wkWarn"></span>
+      </div>
     </section>
 
     <section class="card" data-panel="seasons" hidden>
@@ -260,7 +299,7 @@ tr.dragging { background: var(--green-soft); }
       const ids = teams.map(t => t.id);
       ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
     }
-    renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots();
+    renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots(); renderWeekEvents();
   }
   $("seasonPick").onchange = () => loadAll(+$("seasonPick").value);
   const teamOf = pid => { const m = members.find(m => m.player_id === pid); return m && teams.find(t => t.id === m.team_id); };
@@ -588,6 +627,161 @@ tr.dragging { background: var(--green-soft); }
       if (check(error)) season[k] = v;
     });
   }
+
+  // ---------- lineups & results ----------
+  let wk = null; // { ev, holes, matchups, lineups, scores, hcp }
+  const courseHcp = (idx, tee) => Math.round((+idx || 0) * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
+  function renderWeekEvents() {
+    const cur = $("wkEvent").value;
+    $("wkEvent").innerHTML = events.map(e => `<option value="${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}${e.status === "final" ? " · final" : e.status === "rained_out" ? " · cancelled" : ""}</option>`).join("");
+    if (cur && events.some(e => String(e.id) === cur)) $("wkEvent").value = cur;
+    else { const open = events.find(e => e.status !== "final" && e.status !== "rained_out"); const pick = open || events.at(-1); if (pick) $("wkEvent").value = pick.id; }
+    loadWeek();
+  }
+  $("wkEvent").onchange = () => loadWeek();
+  async function loadWeek() {
+    const ev = events.find(e => e.id === +$("wkEvent").value); if (!ev) { $("wkLineups").innerHTML = ""; return; }
+    const [{ data: ms }, { data: lu }, { data: sc }, { data: th }, { data: hc }] = await Promise.all([
+      sb.from("matchups").select("*").eq("event_id", ev.id).order("tee_time").order("id"),
+      sb.from("lineups").select("*").eq("event_id", ev.id),
+      sb.from("scores").select("player_id,hole,strokes").eq("event_id", ev.id),
+      sb.from("tees").select("id,name,rating,slope,par,tee_holes(hole,par)").eq("course_id", ev.course_id),
+      sb.from("player_handicaps").select("player_id,handicap_index")
+    ]);
+    const tees = th || [], holes = [...(tees[0]?.tee_holes || [])].sort((a, b) => a.hole - b.hole);
+    wk = { ev, tees, holes, matchups: ms || [], lineups: lu || [], scores: sc || [], hcp: new Map((hc || []).map(h => [h.player_id, +h.handicap_index])) };
+    renderWeek();
+  }
+  // The slots a team plays this week: saved lineup rows, or its two regulars.
+  function slotsOf(teamId) {
+    const lu = wk.lineups.filter(l => l.team_id === teamId).sort((a, b) => a.id - b.id);
+    if (lu.length) return lu.map(l => ({ kind: l.kind, player_id: l.player_id, tee: l.tee }));
+    return members.filter(m => m.team_id === teamId).map(m => { const p = players.find(x => x.id === m.player_id); return { kind: "regular", player_id: m.player_id, tee: p?.default_tee || "Blue" }; });
+  }
+  const teeOf = name => wk.tees.find(t => t.name === name) || wk.tees.find(t => t.name === "Blue") || wk.tees[0];
+  function compute() {
+    const rows = [];
+    wk.matchups.forEach(m => [m.team_a, m.team_b].forEach(tid => {
+      const sl = slotsOf(tid);
+      while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
+      sl.forEach((x, i) => {
+        if (x.kind === "ghost" || !x.player_id) { rows.push({ team_id: tid, slot: i + 1, kind: "ghost", player_id: null, net: season.ghost_net, ghost: true }); return; }
+        const tee = teeOf(x.tee), idx = wk.hcp.get(x.player_id) ?? 0;
+        const by = new Map(wk.scores.filter(s => s.player_id === x.player_id).map(s => [s.hole, s.strokes]));
+        const done = wk.holes.every(h => by.has(h.hole)), gross = wk.holes.reduce((t, h) => t + (by.get(h.hole) || 0), 0);
+        const ch = courseHcp(idx, tee);
+        rows.push({ team_id: tid, slot: i + 1, kind: x.kind, player_id: x.player_id, tee: tee.name, gross, handicap_index: idx, course_handicap: ch, net: gross - ch, done, thru: by.size, rating: +tee.rating, slope: tee.slope });
+      });
+    }));
+    // Places and points among real golfers; tied golfers split the points of the places they share. Ghosts take no place.
+    const real = rows.filter(r => !r.ghost && r.done).sort((a, b) => a.net - b.net);
+    for (let i = 0; i < real.length;) {
+      let j = i; while (j + 1 < real.length && real[j + 1].net === real[i].net) j++;
+      let sum = 0; for (let k = i; k <= j; k++) sum += season.points_table[k] ?? 0;
+      for (let k = i; k <= j; k++) Object.assign(real[k], { place: i + 1, tied: j > i, points: Math.round(sum / (j - i + 1) * 100) / 100 });
+      i = j + 1;
+    }
+    rows.forEach(r => { if (r.points == null) r.points = 0; });
+    const teamRows = [];
+    wk.matchups.forEach(m => {
+      const tn = tid => rows.filter(r => r.team_id === tid).reduce((t, r) => t + r.net, 0);
+      const pp = tid => rows.filter(r => r.team_id === tid).reduce((t, r) => t + r.points, 0);
+      const a = tn(m.team_a), b = tn(m.team_b);
+      [[m.team_a, m.team_b, a, b], [m.team_b, m.team_a, b, a]].forEach(([t, o, mine, theirs]) => {
+        const mp = mine < theirs ? season.team_win : mine === theirs ? season.team_tie : 0;
+        teamRows.push({ team_id: t, opponent_id: o, team_net: mine, match_points: mp, player_points: pp(t), total: mp + pp(t) });
+      });
+    });
+    return { rows, teamRows, incomplete: rows.filter(r => !r.ghost && !r.done) };
+  }
+  const tLabel = tid => { const t = teams.find(x => x.id === tid); return t ? `#${t.number} ${esc(t.name)}` : "?"; };
+  const pLabel = pid => { const p = players.find(x => x.id === pid); return p ? esc(pname(p)) : "?"; };
+  function renderWeek() {
+    const { ev } = wk, final = ev.status === "final";
+    $("wkStatus").innerHTML = final ? '<span class="pill">Final</span>' : ev.status === "rained_out" ? '<span class="pill warn">Cancelled</span>' : '<span class="pill warn">Open</span>';
+    if (!wk.matchups.length) { $("wkLineups").innerHTML = '<p class="note">No tee times for this week yet. Set them on the Tee sheet tab.</p>'; $("wkScores").innerHTML = ""; $("wkResults").innerHTML = ""; $("wkTeams").innerHTML = ""; return; }
+    const playing = new Set(wk.matchups.flatMap(m => [m.team_a, m.team_b]).flatMap(t => slotsOf(t).map(x => x.player_id)).filter(Boolean));
+    const opts = (sel, tid) => `<option value="ghost"${!sel ? " selected" : ""}>Ghost (${season.ghost_net} net)</option>` +
+      `<optgroup label="Team">${members.filter(m => m.team_id === tid).map(m => `<option value="${m.player_id}"${m.player_id === sel ? " selected" : ""}>${pLabel(m.player_id)}</option>`).join("")}</optgroup>` +
+      `<optgroup label="Subs and others">${players.filter(p => p.active && !members.some(m => m.team_id === tid && m.player_id === p.id)).map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}${!teamOf(p.id) ? " (sub)" : ""}${playing.has(p.id) && p.id !== sel ? " · playing" : ""}</option>`).join("")}</optgroup>`;
+    const teeSel = (v) => `<select data-tee>${["Blue", "White", "Gold"].map(x => `<option${x === v ? " selected" : ""}>${x}</option>`).join("")}</select>`;
+    $("wkLineups").innerHTML = `<div class="lu">` + wk.matchups.map(m => [m.team_a, m.team_b].map(tid => {
+      const sl = slotsOf(tid); while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
+      return `<div class="box" data-team="${tid}"><h4>${tLabel(tid)} <span class="note" style="font-weight:400">· ${fmtTime(m.tee_time.slice(0, 5))}</span></h4>` +
+        sl.map((x, i) => `<div class="slot" data-slot="${i}"><select data-p${final ? " disabled" : ""}>${opts(x.player_id, tid)}</select>${teeSel(x.tee || "Blue")}</div>`).join("") + `</div>`;
+    }).join("")).join("") + `</div>`;
+    $("wkLineups").querySelectorAll(".box").forEach(box => box.querySelectorAll("select").forEach(el => el.onchange = () => saveLineup(+box.dataset.team, box)));
+    if (final) $("wkLineups").querySelectorAll("select").forEach(x => x.disabled = true);
+    renderScores(); renderResults();
+  }
+  async function saveLineup(tid, box) {
+    const picks = [...box.querySelectorAll(".slot")].map(sl => { const v = sl.querySelector("[data-p]").value; const pid = v === "ghost" ? null : +v; return { player_id: pid, tee: sl.querySelector("[data-tee]").value }; });
+    if (picks[0].player_id && picks[0].player_id === picks[1].player_id) { toast("Pick two different golfers.", true); return renderWeek(); }
+    const regs = members.filter(m => m.team_id === tid).map(m => m.player_id);
+    const rows = picks.map(x => ({ event_id: wk.ev.id, team_id: tid, player_id: x.player_id, kind: !x.player_id ? "ghost" : regs.includes(x.player_id) ? "regular" : "sub", tee: x.tee }));
+    let r = await sb.from("lineups").delete().eq("event_id", wk.ev.id).eq("team_id", tid);
+    if (!check(r.error, "")) return;
+    const { data, error } = await sb.from("lineups").insert(rows).select();
+    if (!check(error, "Lineup saved")) return loadWeek();
+    wk.lineups = wk.lineups.filter(l => l.team_id !== tid).concat(data);
+    renderWeek();
+  }
+  function renderScores() {
+    const { rows } = compute(), real = rows.filter(r => !r.ghost);
+    const by = new Map(wk.scores.map(s => [s.player_id + ":" + s.hole, s.strokes]));
+    $("wkScores").innerHTML = `<thead><tr><th>Golfer</th>${wk.holes.map(h => `<th class="num">${h.hole}</th>`).join("")}<th class="num">Gross</th></tr><tr><td class="note">Par</td>${wk.holes.map(h => `<td class="num note">${h.par}</td>`).join("")}<td class="num note">${wk.holes.reduce((t, h) => t + h.par, 0)}</td></tr></thead><tbody>` +
+      real.map(r => `<tr data-p="${r.player_id}"${r.done ? "" : ' class="inc"'}><td><b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ' <span class="note">sub</span>' : ""}</td>${wk.holes.map(h => `<td><input class="hs" inputmode="numeric" data-h="${h.hole}" data-par="${h.par}" value="${by.get(r.player_id + ":" + h.hole) ?? ""}"></td>`).join("")}<td class="num"><b>${r.done ? r.gross : r.thru + "/9"}</b></td></tr>`).join("") + `</tbody>`;
+    $("wkScores").querySelectorAll("input.hs").forEach(el => el.onchange = async () => {
+      const pid = +el.closest("tr").dataset.p, hole = +el.dataset.h, par = +el.dataset.par, v = el.value.trim();
+      if (v === "") {
+        const { error } = await sb.from("scores").delete().eq("event_id", wk.ev.id).eq("player_id", pid).eq("hole", hole);
+        if (check(error, "Score removed")) wk.scores = wk.scores.filter(s => !(s.player_id === pid && s.hole === hole));
+      } else {
+        const n = +v; if (!(n >= 1 && n <= 2 * par)) { toast(`Score must be 1 to ${2 * par} (double par).`, true); el.value = ""; return; }
+        const { error } = await sb.from("scores").upsert({ event_id: wk.ev.id, player_id: pid, hole, strokes: n, updated_at: new Date().toISOString() }, { onConflict: "event_id,player_id,hole" });
+        if (check(error)) { wk.scores = wk.scores.filter(s => !(s.player_id === pid && s.hole === hole)); wk.scores.push({ player_id: pid, hole, strokes: n }); }
+      }
+      renderScores(); renderResults();
+    });
+  }
+  function renderResults() {
+    const { rows, teamRows, incomplete } = compute(), final = wk.ev.status === "final";
+    $("wkRule").textContent = `Places use net score among real golfers; ties split the points. Ghosts count ${season.ghost_net} net for their team but take no place. Team win ${season.team_win}, tie ${season.team_tie}.`;
+    const order = [...rows].sort((a, b) => (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || (a.place ?? 999) - (b.place ?? 999));
+    $("wkResults").innerHTML = `<thead><tr><th>Pos</th><th>Golfer</th><th>Team</th><th class="num">Gross</th><th class="num">Index</th><th class="num">Hcp</th><th class="num">Net</th><th class="num">Pts</th></tr></thead><tbody>` +
+      order.map(r => `<tr${!r.ghost && !r.done ? ' class="inc"' : ""}><td>${r.ghost ? "" : r.place ? (r.tied ? "T" : "") + r.place : "–"}</td><td>${r.ghost ? '<span class="note">Ghost</span>' : `<b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ' <span class="note">sub</span>' : ""}`}</td><td>${tLabel(r.team_id)}</td>
+        <td class="num">${r.ghost ? "" : r.done ? r.gross : r.thru + "/9"}</td><td class="num">${r.ghost ? "" : (+r.handicap_index).toFixed(2)}</td><td class="num">${r.ghost ? "" : r.course_handicap}</td><td class="num"><b>${r.done || r.ghost ? r.net : ""}</b></td><td class="num">${r.ghost ? "" : r.points}</td></tr>`).join("") + `</tbody>`;
+    const tOrder = [...teamRows].sort((a, b) => b.total - a.total);
+    $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th class="num">Match</th><th class="num">Golfer pts</th><th class="num">Total</th></tr></thead><tbody>` +
+      tOrder.map(t => `<tr><td><b>${tLabel(t.team_id)}</b></td><td class="note">${tLabel(t.opponent_id)}</td><td class="num">${t.team_net}</td><td class="num">${t.match_points}</td><td class="num">${t.player_points}</td><td class="num"><b>${t.total}</b></td></tr>`).join("") + `</tbody>`;
+    $("wkWarn").textContent = !final && incomplete.length ? `${incomplete.length} golfer${incomplete.length === 1 ? " hasn't" : "s haven't"} finished: ${incomplete.map(r => pLabel(r.player_id)).join(", ")}. Fix their scores or swap in a ghost before finalizing.` : "";
+    $("wkFinal").hidden = final; $("wkReopen").hidden = !final;
+    $("wkFinal").disabled = !!incomplete.length || wk.ev.status === "rained_out";
+  }
+  $("wkFinal").onclick = async () => {
+    const { rows, teamRows, incomplete } = compute(); if (incomplete.length) return;
+    if (!confirm(`Finalize week ${wk.ev.number}? This saves the points and adds ${rows.filter(r => !r.ghost).length} rounds to players' handicaps. You can reopen it later if something needs fixing.`)) return;
+    const ev = wk.ev; let r;
+    r = await sb.from("results").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("team_results").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("rounds").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("results").insert(rows.map(x => ({ event_id: ev.id, team_id: x.team_id, slot: x.slot, player_id: x.player_id, kind: x.kind, tee: x.tee || null, gross: x.ghost ? null : x.gross, handicap_index: x.ghost ? null : x.handicap_index, course_handicap: x.ghost ? null : x.course_handicap, net: x.net, place: x.place ?? null, tied: !!x.tied, points: x.points })));
+    if (!check(r.error, "")) return;
+    r = await sb.from("team_results").insert(teamRows.map(t => ({ event_id: ev.id, ...t }))); if (!check(r.error, "")) return;
+    r = await sb.from("rounds").insert(rows.filter(x => !x.ghost).map(x => ({ player_id: x.player_id, season_id: season.id, event_id: ev.id, played_on: ev.play_date, seq: 0, label: `${season.name} · Week ${ev.number}`, adjusted_gross: x.gross, rating: x.rating, slope: x.slope, source: "app" })));
+    if (!check(r.error, "")) return;
+    r = await sb.from("events").update({ status: "final" }).eq("id", ev.id); if (!check(r.error, `Week ${ev.number} is final`)) return;
+    ev.status = "final"; renderEvents(); renderWeekEvents();
+  };
+  $("wkReopen").onclick = async () => {
+    const ev = wk.ev;
+    if (!confirm(`Reopen week ${ev.number}? Its points come off the standings and its rounds come out of handicaps until you finalize again.`)) return;
+    let r = await sb.from("rounds").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("results").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("team_results").delete().eq("event_id", ev.id); if (!check(r.error, "")) return;
+    r = await sb.from("events").update({ status: "in_progress" }).eq("id", ev.id); if (!check(r.error, "Week reopened")) return;
+    ev.status = "in_progress"; renderEvents(); renderWeekEvents();
+  };
 
   // ---------- seasons ----------
   function renderSeasons() {
