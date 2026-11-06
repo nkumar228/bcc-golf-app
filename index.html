@@ -1447,7 +1447,87 @@ the spirit, intent, and fairness of league competition.</p>
       const { data, error } = await sb.from("scores").select("player_id,hole,strokes,putts,fairway,green").eq("event_id", ctx.ev.id);
       if (error) return;
       window.BCCScore.setLive(build(data), { quiet, keepPending: quiet });
-      if (!quiet) renderHome();
+      if (!quiet) { renderHome(); setupRounds(); }
+    }
+
+    // Rounds tab: upcoming tee sheet, finalized weeks and season ringer boards from the database
+    let rCache = {}, ringKind = "gross", ringNine = "front";
+    async function setupRounds() {
+      const { season, ev } = ctx;
+      const { data: evs } = await sb.from("events").select("id,number,play_date,course_id,status,note").eq("season_id", season.id).order("number");
+      const list = evs || [], done = list.filter(e => e.status === "final" || e.status === "rained_out").sort((a, b) => b.play_date.localeCompare(a.play_date));
+      const nine = cid => cid === ev.course_id ? (ctx.course?.name || "").replace("Avon Fields - ", "") : "";
+      rCache = { list, finals: list.filter(e => e.status === "final") };
+      $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="up">Week ${ev.number} · ${fmtDate(ev.play_date)}</option></optgroup>` +
+        (rCache.finals.length ? `<optgroup label="Season boards"><option value="ringer-gross">Ringer (gross)</option><option value="ringer-net">Net Ringer</option></optgroup>` : "") +
+        (done.length ? `<optgroup label="Played">` + done.map(e => `<option value="${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}${e.status === "rained_out" ? " · rained out" : ""}</option>`).join("") + `</optgroup>` : "");
+      $("wkPick").value = done.length ? String(done[0].id) : "up";
+      $("wkPick").onchange = renderRound;
+      document.querySelectorAll("button[data-n]").forEach(b => b.onclick = () => { ringNine = b.dataset.n; document.querySelectorAll("button[data-n]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
+      renderRound();
+    }
+    const showR = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; $("ringer").hidden = k !== "ring"; };
+    const f1 = v => Number.isInteger(+v) ? String(+v) : (+v).toFixed(1);
+    async function renderRound() {
+      const v = $("wkPick").value, { ev, matchups, teams } = ctx, teamById = new Map(teams.map(t => [t.id, t]));
+      if (v.startsWith("ringer")) { ringKind = v === "ringer-net" ? "net" : "gross"; showR("ring"); $("wkInfo").textContent = `Each player's best ${ringKind} score on every hole, ${rCache.finals.length} week${rCache.finals.length === 1 ? "" : "s"} so far`; renderRinger(); return; }
+      if (v === "up") {
+        showR("up"); $("wkInfo").textContent = `${fmtDate(ev.play_date)} · ${ctx.course?.name || ""}${matchups[0] ? " · first tee " + fmtTime(matchups[0].tee_time) : ""}`;
+        $("wkUpList").innerHTML = matchups.map(m => { const side = tid => { const t = teamById.get(tid); return `<div class="tm${tid === m.team_b ? " r" : ""}"><b>${esc(t?.name || "")}</b><div class="pl">${rosterOf(t).map(r => `<span>${r.ghost ? "Ghost" : esc(r.p?.last_name || "")}</span>`).join("")}</div></div>`; };
+          return `<div class="card trow2"><div class="tt num">${fmtTime(m.tee_time).replace(" PM", "")}<small>PM</small></div>${side(m.team_a)}${side(m.team_b)}</div>`; }).join("") || '<p class="updated">No tee times yet.</p>';
+        return;
+      }
+      const e = rCache.list.find(x => x.id === +v); if (!e) return;
+      $("wkInfo").textContent = `${fmtDate(e.play_date)}${e.note ? " · " + e.note : ""}`;
+      if (e.status === "rained_out") { showR("rain"); $("wkRain").innerHTML = `<b>No scores this week.</b><br><span class="updated">${esc(e.note || "Rained out")}.</span>`; return; }
+      showR("played");
+      const [{ data: res }, { data: tres }, { data: ms }, { data: sc }] = await Promise.all([
+        sb.from("results").select("player_id,team_id,kind,gross,net,place,tied,points,players(first_name,last_name)").eq("event_id", e.id),
+        sb.from("team_results").select("team_id,opponent_id,team_net,match_points").eq("event_id", e.id),
+        sb.from("matchups").select("tee_time,team_a,team_b").eq("event_id", e.id).order("tee_time"),
+        sb.from("scores").select("player_id,hole,putts,fairway,green").eq("event_id", e.id)
+      ]);
+      const st = {}; (sc || []).forEach(x => { const o = st[x.player_id] = st[x.player_id] || { putts: 0, fw: 0, gir: 0 }; o.putts += x.putts || 0; o.fw += x.fairway ? 1 : 0; o.gir += x.green ? 1 : 0; });
+      const rows = (res || []).filter(r => r.player_id).sort((a, b) => (a.place ?? 99) - (b.place ?? 99));
+      $("wkPlayers").innerHTML = `<thead><tr><th>Pos</th><th class="l">Player</th><th>Pts</th><th>Gross</th><th>Net</th><th>Fwy</th><th>GIR</th><th>Putts</th></tr></thead><tbody>` +
+        rows.map(r => `<tr${r.player_id === session.playerId ? ' class="mine"' : ""}><td class="pos">${r.tied ? "T" : ""}${r.place ?? ""}</td><td class="l"><b>${esc(r.players?.last_name)}, ${esc(r.players?.first_name)}</b>${r.kind === "sub" ? ' <small class="updated">sub</small>' : ""}</td><td>${f1(r.points)}</td><td>${r.gross}</td><td>${r.net}</td><td>${st[r.player_id]?.fw ?? "–"}</td><td>${st[r.player_id]?.gir ?? "–"}</td><td>${st[r.player_id]?.putts || "–"}</td></tr>`).join("") + "</tbody>";
+      const tr = new Map((tres || []).map(t => [t.team_id, t]));
+      $("wkMatches").innerHTML = (ms || []).map(m => {
+        const A = tr.get(m.team_a), B = tr.get(m.team_b), win = A && B ? (A.team_net < B.team_net ? "a" : B.team_net < A.team_net ? "b" : "tie") : "";
+        const side = (tid, t, k) => `<div class="side ${k}${win === k ? " win" : ""}"><b>${esc(teamById.get(tid)?.name || "")}</b><span class="tn">net ${t?.team_net ?? "–"}</span><span class="tp num">${t ? f1(t.match_points) : "–"}</span></div>`;
+        return `<div class="card mrow">${side(m.team_a, A, "a")}<div class="mvs"><span class="num">${fmtTime(m.tee_time).replace(" PM", "")}</span>${win === "tie" ? "tie" : "vs"}</div>${side(m.team_b, B, "b")}</div>`;
+      }).join("");
+    }
+    async function renderRinger() {
+      if (!rCache.ring) {
+        const ids = rCache.finals.map(e => e.id);
+        const [{ data: sc }, { data: res }, { data: tees }] = await Promise.all([
+          sb.from("scores").select("event_id,player_id,hole,strokes").in("event_id", ids),
+          sb.from("results").select("event_id,player_id,tee,course_handicap,players(first_name,last_name)").in("event_id", ids).not("player_id", "is", null),
+          sb.from("tees").select("name,tee_holes(hole,par,stroke_index)")
+        ]);
+        rCache.ring = { sc: sc || [], res: res || [], tees: tees || [] };
+      }
+      const { sc, res, tees } = rCache.ring, base = ringNine === "front" ? 1 : 10, holes = Array.from({ length: 9 }, (_, i) => base + i);
+      const parOf = h => (tees.find(t => t.name === "Blue")?.tee_holes || []).find(x => x.hole === h)?.par ?? 4;
+      const rinfo = new Map(res.map(r => [r.event_id + ":" + r.player_id, r]));
+      const best = new Map();
+      sc.filter(x => x.hole >= base && x.hole < base + 9).forEach(x => {
+        const r = rinfo.get(x.event_id + ":" + x.player_id); if (!r) return;
+        let v = x.strokes;
+        if (ringKind === "net") {
+          const t = tees.find(t => t.name === r.tee) || tees.find(t => t.name === "Blue"), si = (t?.tee_holes || []).filter(h => h.hole >= base && h.hole < base + 9).sort((a, b) => a.hole - b.hole).map(h => h.stroke_index);
+          const rk = si.map(q => si.filter(z => z < q).length + 1), i = x.hole - base, h = r.course_handicap || 0;
+          v -= h < 0 ? (rk[i] > 9 + Math.max(h, -9) ? -1 : 0) : Math.floor(h / 9) + (rk[i] <= h % 9 ? 1 : 0);
+        }
+        const o = best.get(x.player_id) || { name: `${r.players?.last_name}, ${r.players?.first_name}`, id: x.player_id, h: {} };
+        o.h[x.hole] = Math.min(o.h[x.hole] ?? 99, v); best.set(x.player_id, o);
+      });
+      const rows = [...best.values()].filter(o => holes.every(h => o.h[h] != null)).map(o => ({ ...o, tot: holes.reduce((t, h) => t + o.h[h], 0) })).sort((a, b) => a.tot - b.tot || a.name.localeCompare(b.name));
+      const mk = (v, h) => { if (ringKind !== "gross") return `<span class="mk">${v}</span>`; const d = v - parOf(h); return `<span class="mk ${d <= -2 ? "eagle" : d === -1 ? "birdie" : d === 1 ? "bogey" : d >= 2 ? "double" : ""}">${v}</span>`; };
+      $("ringTable").innerHTML = `<thead><tr><th class="l">Player</th>${holes.map(h => `<th>${h}</th>`).join("")}<th>Tot</th></tr><tr class="parrow"><th class="l">Par</th>${holes.map(h => `<th>${parOf(h)}</th>`).join("")}<th>${holes.reduce((t, h) => t + parOf(h), 0)}</th></tr></thead><tbody>` +
+        (rows.length ? rows.map(o => `<tr${o.id === session.playerId ? ' class="mine"' : ""}><td class="l"><b>${esc(o.name)}</b></td>${holes.map(h => `<td>${mk(o.h[h], h)}</td>`).join("")}<td class="tot">${o.tot}</td></tr>`).join("") : `<tr><td class="l" colspan="11">No one has played the ${ringNine} nine in a final week yet.</td></tr>`) + "</tbody>";
+      $("ringNote").textContent = ringKind === "net" ? "Net score per hole after handicap strokes." : "○ birdie · □ bogey.";
     }
 
     // Home: this week's card and season standings from finalized weeks
