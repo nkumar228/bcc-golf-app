@@ -249,6 +249,20 @@ table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .stand td.big { font-family: var(--display); font-size: 19px; font-weight: 700; }
 .stand tr.mine td { background: var(--you); }
 .stand b { font-weight: 600; }
+.hcx .step { border: 0; padding: 0; background: none; border-radius: 0; height: auto; width: auto; display: flex; gap: 10px; align-items: baseline; margin: 22px 0 6px; }
+.hcx .step .n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--green); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.hcx .step h3 { margin: 0; font-size: 16px; border: 0; padding: 0; background: none; text-transform: none; letter-spacing: 0; color: var(--ink); font-family: inherit; font-weight: 700; }
+.hcx p { margin: 6px 0; font-size: 14px; line-height: 1.5; }
+.hcx .big { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1; color: var(--green); }
+.hcx .math { font-variant-numeric: tabular-nums; background: var(--green-soft); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.hcx table.rd { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13.5px; margin-top: 6px; }
+.hcx table.rd th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; text-align: right; padding: 6px 4px; }
+.hcx table.rd td { text-align: right; padding: 7px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+.hcx table.rd th:first-child, .hcx table.rd td:first-child { text-align: left; white-space: normal; }
+.hcx table.rd tr.used td { background: var(--green-soft); font-weight: 600; }
+.hcx table.rd tr.used td:last-child::after { content: " ✓"; color: var(--green); }
+.hcx table.rd tr.dropped td { color: var(--muted); }
+.hcx table.rd .calc { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; }
 .hi { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
 .hcard { padding: 12px; display: grid; gap: 2px; }
 .hcard small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
@@ -395,6 +409,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   </div>
   <div class="menu" id="menu" hidden>
     <div class="who"><b id="whoName"></b><span id="whoRole" class="role"></span></div>
+    <a href="#handicap">How my handicap is calculated</a>
     <a href="#rules">League rules</a>
     <a href="#skins-games">Skins winners</a>
     <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
@@ -858,6 +873,15 @@ the spirit, intent, and fairness of league competition.</p>
     </div>
   </section>
 
+  <section class="view" id="v-handicap" aria-label="How my handicap is calculated" hidden>
+    <div class="card pad rules hcx">
+      <p class="label">Handicap</p>
+      <h2 id="hxTitle">How your handicap is calculated</h2>
+      <div id="hxPick" hidden style="margin:6px 0 4px"><label class="updated" for="hxPlayer">Admins: show another player</label><br><select id="hxPlayer"></select></div>
+      <div id="hxBody"><p class="updated">Loading…</p></div>
+    </div>
+  </section>
+
   <section class="view" id="v-gps" aria-label="GPS" hidden>
     <div class="card gps">
       <div class="gps-top">
@@ -1260,7 +1284,7 @@ the spirit, intent, and fairness of league competition.</p>
   loadMember();
 
   // Router: #home, #score, #gps
-  const views = { home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const views = { handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
   const menu = $("menu"), mb = $("menuBtn");
   const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
   mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };
@@ -1275,6 +1299,92 @@ the spirit, intent, and fairness of league competition.</p>
   }
   window.addEventListener("hashchange", route); route();
   applySession();
+
+  // ---------- How my handicap is calculated ----------
+  (() => {
+    const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const USED_FOR = [1,1,1,1,1,2,2,2,3,3,3,4,4,4,5,5,6,6,7,8]; // rounds used when a player has 1..20 rounds
+    const fx = (n, d = 1) => (+n).toFixed(d);
+    const trunc = (n, d) => Math.trunc(n * 10 ** d + 1e-9) / 10 ** d;
+    const variation = r => Math.round((r.adjusted_gross - r.rating) * 113 / r.slope * 10 + 1e-9) / 10;
+    const label = r => r.played_on ? `${new Date(r.played_on + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}${r.label ? " · " + r.label : ""}`
+      : (/^2026 event (\d+)/.test(r.label || "") ? `2026 · Week ${r.label.match(/\d+$/)[0]}` : "Before 2026");
+    const DEMO = { name: "Demo player", rounds: [44,43,46,40,45,45,39,42,44,40,42,43,42,43,43,43,48,42,43,40].map((g, i) => ({ adjusted_gross: g, rating: i % 2 ? 32.7 : 31.9, slope: 111, label: `2026 event ${21 - i}`, played_on: null, seq: 20 - i, id: i })) };
+    let loadedFor = null, roster = null;
+
+    async function load(pid) {
+      const body = $("hxBody"), real = session && session.real && sb;
+      if (!session) { body.innerHTML = '<p class="updated">Sign in to see your handicap.</p>'; return; }
+      let rounds, name, set = { handicap_rounds: 20, handicap_best: 8, handicap_percent: 100 };
+      if (!real) { rounds = DEMO.rounds; name = DEMO.name; }
+      else {
+        body.innerHTML = '<p class="updated">Loading…</p>';
+        const id = pid || session.playerId;
+        const [{ data: rs, error }, { data: ss }, { data: pl }] = await Promise.all([
+          sb.from("rounds").select("id,played_on,seq,label,adjusted_gross,rating,slope").eq("player_id", id),
+          sb.from("seasons").select("handicap_rounds,handicap_best,handicap_percent").eq("is_current", true).maybeSingle(),
+          sb.from("players").select("first_name,last_name").eq("id", id).maybeSingle()
+        ]);
+        if (error) { body.innerHTML = '<p class="updated">Couldn\'t load your rounds. Check your signal and try again.</p>'; return; }
+        rounds = rs || []; if (ss) set = ss; name = pl ? `${pl.first_name} ${pl.last_name}` : "";
+        if (session.admin && !roster) {
+          const { data: all } = await sb.from("players").select("id,first_name,last_name").eq("active", true).order("last_name").order("first_name");
+          roster = all || [];
+          $("hxPlayer").innerHTML = roster.map(p => `<option value="${p.id}">${esc(p.last_name)}, ${esc(p.first_name)}</option>`).join("");
+          $("hxPlayer").onchange = () => load(+$("hxPlayer").value);
+        }
+        $("hxPick").hidden = !session.admin;
+        if (session.admin) $("hxPlayer").value = String(id);
+      }
+      const you = !pid || pid === session.playerId;
+      $("hxTitle").textContent = you ? "How your handicap is calculated" : `How ${name}'s handicap is calculated`;
+      render(rounds, set, you ? "you" : name.split(" ")[0]);
+    }
+
+    function render(all, set, who) {
+      const N = set.handicap_rounds, K = set.handicap_best, pct = set.handicap_percent;
+      const body = $("hxBody"), You = who === "you" ? "You" : who, your = who === "you" ? "your" : who + "'s";
+      if (!all.length) { body.innerHTML = `<p>${You} ${who === "you" ? "don't" : "doesn't"} have any rounds yet. A handicap starts after the first round is finished.</p>`; return; }
+      const sorted = [...all].sort((a, b) => (b.played_on || "2000-01-01").localeCompare(a.played_on || "2000-01-01") || b.seq - a.seq || b.id - a.id);
+      const recent = sorted.slice(0, N).map((r, i) => ({ ...r, v: variation(r), i }));
+      const n = recent.length, k = n >= N ? K : USED_FOR[Math.min(n, 20) - 1];
+      const best = [...recent].sort((a, b) => a.v - b.v || a.i - b.i).slice(0, k);
+      const usedSet = new Set(best.map(r => r.i));
+      const sum = Math.round(best.reduce((t, r) => t + r.v, 0) * 10) / 10, pre = trunc(sum / k, 3), idx = trunc(pre * pct / 100, 4);
+      const eg = recent[0];
+      body.innerHTML = `
+        <p class="updated" style="margin-top:4px">${You === "You" ? "Your" : your.replace(/^./, c => c.toUpperCase())} handicap index</p>
+        <div class="big">${fx(idx, 2)}</div>
+        <p class="updated">Based on ${k} of ${your} last ${n} round${n === 1 ? "" : "s"}. It updates after each week is finalized.</p>
+
+        <div class="step"><span class="n">1</span><h3>Take ${your} most recent rounds</h3></div>
+        <p>The league looks at ${your} last <b>${N}</b> rounds${n < N ? `. ${You} ${who === "you" ? "have" : "has"} <b>${n}</b> so far, so all of them count` : ""}. Rounds from earlier seasons carry over, so a new season doesn't start ${your} handicap from scratch.</p>
+
+        <div class="step"><span class="n">2</span><h3>Score each round against the course</h3></div>
+        <p>Each round gets a <b>variation</b>: how many strokes over the course rating it was, adjusted for how hard the tees play.</p>
+        <div class="math">Variation = (score − course rating) × 113 ÷ slope<br>
+          Example, ${esc(label(eg))}: (${eg.adjusted_gross} − ${fx(eg.rating)}) × 113 ÷ ${eg.slope} = <b>${fx(eg.v)}</b></div>
+        <p class="updated">113 is the slope of a course of average difficulty, so tougher tees (higher slope) shrink the variation a little.</p>
+        <table class="rd"><thead><tr><th>Round</th><th>Score</th><th>Rating</th><th>Slope</th><th>Variation</th></tr></thead><tbody>
+          ${recent.map(r => `<tr class="${usedSet.has(r.i) ? "used" : "dropped"}"><td>${esc(label(r))}</td><td>${r.adjusted_gross}</td><td>${fx(r.rating)}</td><td>${r.slope}</td><td>${fx(r.v)}</td></tr>`).join("")}
+        </tbody></table>
+
+        <div class="step"><span class="n">3</span><h3>Keep the best ${k}</h3></div>
+        <p>${n >= N ? `Of those ${N}, the <b>${K} lowest</b> variations count and the other ${N - K} are dropped.` : `With ${n} round${n === 1 ? "" : "s"}, the league uses the <b>${k} lowest</b> (the count grows as rounds are added, up to ${K} of ${N}).`} They're the rows with a ✓ above.</p>
+
+        <div class="step"><span class="n">4</span><h3>Average them</h3></div>
+        <div class="math">${best.map(r => fx(r.v)).sort((a, b) => a - b).join(" + ")} = ${fx(sum)}<br>${fx(sum)} ÷ ${k} = <b>${fx(pre, 3)}</b></div>
+
+        <div class="step"><span class="n">5</span><h3>Apply the league percentage</h3></div>
+        <div class="math">${fx(pre, 3)} × ${pct}% = <b>${fx(idx, 2)}</b> handicap index</div>
+        <p class="updated">Scores are adjusted gross scores. Rounds before 2027 came over from GolfSoftware and give the same result it did.</p>`;
+    }
+
+    const show = () => { if (location.hash === "#handicap") load(loadedFor = null); };
+    window.addEventListener("hashchange", show);
+    window.addEventListener("bcc-session", () => { roster = null; show(); });
+    show();
+  })();
 
   // Season standings snapshot (GolfSoftware results, events 1-21)
   const TEAM_ST = [["Beer Bombers",120,411.5],["Missing in Action",110,433.5],["Roger and Me",100,429.5],["Two Hearted Ail",100,401],["FIRGIRBIRGIR",95,455],["Bogey Knights",90,462],["Who's Your Caddie",85,402],["Weapons of Grass Destruction",80,295.5],["RahOleg in One",65,321.5],["Keepin' it 100",55,330.5]];
