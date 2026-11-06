@@ -1315,7 +1315,7 @@ the spirit, intent, and fairness of league competition.</p>
     async function load(pid) {
       const body = $("hxBody"), real = session && session.real && sb;
       if (!session) { body.innerHTML = '<p class="updated">Sign in to see your handicap.</p>'; return; }
-      let rounds, name, tees = [{ course: "Front", name: "Blue", slope: 111 }, { course: "Back", name: "Blue", slope: 111 }], set = { handicap_rounds: 20, handicap_best: 8, handicap_percent: 100 };
+      let rounds, name, tees = [{ course: "Front", name: "Blue", slope: 111, rating: 32.7, par: 33 }, { course: "Back", name: "Blue", slope: 111, rating: 31.9, par: 33 }], set = { handicap_rounds: 20, handicap_best: 8, handicap_percent: 100 };
       if (!real) { rounds = DEMO.rounds; name = DEMO.name; }
       else {
         body.innerHTML = '<p class="updated">Loading…</p>';
@@ -1324,12 +1324,12 @@ the spirit, intent, and fairness of league competition.</p>
           sb.from("rounds").select("id,played_on,seq,label,adjusted_gross,rating,slope").eq("player_id", id),
           sb.from("seasons").select("handicap_rounds,handicap_best,handicap_percent").eq("is_current", true).maybeSingle(),
           sb.from("players").select("first_name,last_name,default_tee").eq("id", id).maybeSingle(),
-          sb.from("tees").select("name,slope,courses(name)")
+          sb.from("tees").select("name,slope,rating,par,courses(name)")
         ]);
         if (error) { body.innerHTML = '<p class="updated">Couldn\'t load your rounds. Check your signal and try again.</p>'; return; }
         rounds = rs || []; if (ss) set = ss; name = pl ? `${pl.first_name} ${pl.last_name}` : "";
         const myTee = (pl && pl.default_tee) || "Blue";
-        const mine = (ts || []).filter(t => t.name === myTee).map(t => ({ course: (t.courses?.name || "").replace("Avon Fields - ", ""), name: t.name, slope: t.slope }));
+        const mine = (ts || []).filter(t => t.name === myTee).map(t => ({ course: (t.courses?.name || "").replace("Avon Fields - ", ""), name: t.name, slope: t.slope, rating: +t.rating, par: t.par }));
         if (mine.length) tees = mine.sort((a, b) => a.course === "Front" ? -1 : b.course === "Front" ? 1 : 0);
         if (session.admin && !roster) {
           const { data: all } = await sb.from("players").select("id,first_name,last_name").eq("active", true).order("last_name").order("first_name");
@@ -1384,8 +1384,9 @@ the spirit, intent, and fairness of league competition.</p>
         <div class="math">${fx(pre, 2)} × ${pct}% = <b>${fx(idx, 2)}</b> handicap index</div>
 
         <div class="step"><span class="n">6</span><h3>Turn it into strokes for the night</h3></div>
-        <p>On league night the index is adjusted for the tees ${who === "you" ? "you play" : "they play"} (${esc(tees[0]?.name || "Blue")}) and rounded to a whole number. That's ${your} handicap on the scorecard.</p>
-        <div class="math">${tees.map(t => `${esc(t.course)} nine: ${fx(idx, 2)} × ${t.slope} ÷ 113 = ${fx(idx * t.slope / 113, 2)} → <b>${Math.round(idx * t.slope / 113 + 1e-9)}</b>`).join("<br>")}</div>
+        <p>On league night the index is adjusted for the tees ${who === "you" ? "you play" : "they play"} (${esc(tees[0]?.name || "Blue")}): scaled by the slope, then the gap between that tee's rating and par is added. The result is rounded to a whole number. That's ${your} handicap on the scorecard.</p>
+        <div class="math">Handicap = index × slope ÷ 113 + (rating − par)</div>
+        ${tees.map(t => { const ch = idx * t.slope / 113 + (t.rating - t.par); return `<div class="math" style="margin-top:8px"><b>${esc(t.course)} nine</b> (rating ${fx(t.rating)}, par ${t.par}, slope ${t.slope})<br>${fx(idx, 2)} × ${t.slope} ÷ 113 = ${fx(idx * t.slope / 113, 2)}<br>${fx(idx * t.slope / 113, 2)} + (${fx(t.rating)} − ${t.par}) = ${fx(ch, 2)} → <b>${Math.round(ch + 1e-9)}</b></div>`; }).join("")}
         <p class="updated">Scores are adjusted gross scores. Rounds before 2027 came over from GolfSoftware and give the same result it did.</p>`;
     }
 
