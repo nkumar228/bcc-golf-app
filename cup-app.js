@@ -114,17 +114,19 @@
     all.forEach(x => x.ms.forEach(m => D.sides.forEach(s => { tot[s.id] += m.pts.pts[s.id]; live[s.id] += m.pts.live[s.id]; })));
     const anyLive = D.sides.some(s => live[s.id] !== tot[s.id]);
     const totalPts = all.reduce((t, x) => t + (shown(x.r) ? x.ms.length : 0), 0);
+    const totalAvail = all.reduce((t, x) => t + (shown(x.r) ? x.ms.length : x.r.format ? matchCount(x.r) : (x.r.allow_blind ? matchCount({ ...x.r, format: "singles" }) : matchCount({ ...x.r, format: "four_ball" }))), 0);
     const board = `<div class="cup-board">${D.sides.map(s => `<div class="cside" style="--c:${esc(s.color)}"><span>${esc(s.name)}${D.cup.defending_side_id === s.id ? " · holds the Cup" : ""}</span><b class="num">${fmtPts(tot[s.id])}</b>${anyLive ? `<small>${fmtPts(live[s.id])} if it ended now</small>` : ""}</div>`).join("")}</div>`;
     const myRound = D.rounds.find(r => r.status === "revealed" && myMatch(r));
+    const ryderBoardHome = () => ryderBoard(tot, live, totalAvail);
     const cur = D.rounds.find(r => r.status === "revealed") || D.rounds.find(r => r.status === "lineups" || r.status === "setup") || [...D.rounds].reverse().find(r => r.status === "final");
     $("evTitle").textContent = D.cup.name;
     $("evSub").textContent = cur ? `${cur.name} · ${roundLine(cur)}` : "Queen City Cup";
     const curCard = cur ? roundCard(cur, shown(cur) ? matchesOf(cur) : []) : "";
     const myLine = myRound ? (() => { const m = myMatch(myRound); return `<div class="card pad"><div class="head"><p class="label">Your match · ${esc(myRound.name)}</p></div><div class="cstat">${esc(m.st.text)}</div><a class="btn small" href="#score" style="justify-self:start;display:inline-block;margin-top:6px">Score my match</a></div>`; })() : "";
-    $("cupHome").innerHTML = `<div class="card pad"><div class="head"><p class="label">${esc(D.cup.name)}</p><a class="linkbtn" href="#cup">All rounds</a></div>${board}
-      <p class="updated" style="margin:8px 0 0">${totalPts ? `${totalPts} match${totalPts === 1 ? "" : "es"} out so far.` : "Matchups appear here when they're revealed."}</p></div>${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
+    $("cupHome").innerHTML = `${ryderBoardHome()}${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
     const next = D.rounds.find(r => r.status !== "final");
-    $("cupScore").innerHTML = myRound ? scorer(myRound) : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`;
+    const scoreRound = myRound || D.rounds.find(r => r.status === "revealed") || [...D.rounds].reverse().find(r => r.status === "final");
+    $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
     $("cupMine").innerHTML = "";
@@ -138,6 +140,34 @@
     const f = F[r.format];
     return [fmtDate(r.play_date), fmtTime(r.tee_time), r.holes + " holes", f ? f.label : "format not picked yet", r.blind ? "blind draw" : ""].filter(Boolean).join(" · ");
   }
+  // One match, Ryder Cup style: names on each side, the status box in the leader's colour
+  function matchRow(r, m) {
+    const [sa, sb_] = D.sides, st = m.st;
+    const nm = e => e ? [e.player_id, F[r.format]?.pairs ? e.partner_id : null].filter(Boolean).map(last).map(esc).join("<br>") : "<i>absent</i>";
+    const w = m.ov ? m.ov.winner_side_id : st.done ? st.winner : st.leader;
+    const halved = m.ov ? !m.ov.winner_side_id : st.done && !st.winner;
+    let big, small;
+    if (m.ov) { big = halved ? "½" : "WON"; small = m.ov.note || "final"; }
+    else if (!st.done && !st.played) { big = "–"; small = r.tee_time ? fmtTime(r.tee_time) : "not started"; }
+    else if (st.done) { big = halved ? "½" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = halved ? "halved" : st.played ? "final" : "forfeit"; }
+    else { big = st.up ? `${st.up} UP` : "AS"; small = `thru ${st.played}${st.up && st.up === st.left ? " · dormie" : ""}`; }
+    const col = w ? side(w).color : "";
+    const mine = [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me));
+    return `<div class="rm${mine ? " mine" : ""}${st.done || m.ov ? " done" : ""}">
+      <div class="rn${w === sa.id ? " lead" : ""}" style="--c:${esc(sa.color)}">${nm(m.ea)}</div>
+      <div class="rs${w ? " on" : ""}" style="${w ? `--c:${esc(col)}` : ""}"><b>${big}</b><small>${esc(small)}</small></div>
+      <div class="rn r${w === sb_.id ? " lead" : ""}" style="--c:${esc(sb_.color)}">${nm(m.eb)}</div></div>`;
+  }
+  // Big scoreboard: points won, projected if every match ended now, and what it takes to win
+  function ryderBoard(tot, live, totalAvail) {
+    const [sa, sb_] = D.sides; if (!sa || !sb_) return "";
+    const holder = side(D.cup.defending_side_id), need = totalAvail / 2 + 0.5, keep = totalAvail / 2;
+    const half = (s, k) => `<div class="rb-side" style="--c:${esc(s.color)}"><span>${esc(s.name)}${holder && holder.id === s.id ? " · holder" : ""}</span><b class="num">${fmtPts(tot[s.id])}</b></div>`;
+    return `<div class="card rb"><div class="rb-top">${half(sa)}<div class="rb-mid">${totalAvail ? `${fmtPts(totalAvail)}<small>points</small>` : ""}</div>${half(sb_)}</div>
+      <div class="rb-bar">${D.sides.map(s => `<i style="background:${esc(s.color)};width:${totalAvail ? tot[s.id] / totalAvail * 100 : 0}%"></i>`).join('<i class="gap"></i>')}</div>
+      <div class="rb-proj"><span>Projected</span><b style="color:${esc(sa.color)}">${fmtPts(live[sa.id])}</b><em>–</em><b style="color:${esc(sb_.color)}">${fmtPts(live[sb_.id])}</b></div>
+      <p class="updated" style="margin:6px 0 0;text-align:center">${totalAvail ? `${fmtPts(need)} to win${holder ? ` · ${esc(holder.name)} keeps the Cup with ${fmtPts(keep)}` : ""}. Projected counts every live match as if it ended now.` : "Projected counts every live match as if it ended now."}</p></div>`;
+  }
   function roundCard(r, ms) {
     const subs = D.subs.filter(s => s.round_id === r.id);
     let body;
@@ -145,13 +175,7 @@
       const who = D.sides.map(s => `${dot(s)}${esc(s.name)}: ${subs.some(x => x.side_id === s.id) ? "lineup in" : "waiting"}`).join(" &nbsp; ");
       body = `<p class="updated" style="margin:6px 0 0">${r.status === "lineups" ? `Captains are setting lineups. ${who}.` : "Not open yet."} Matchups are hidden until they're revealed.</p>`;
     } else {
-      body = `<div class="cmatches">${ms.map(m => {
-        const nm = e => e ? [e.player_id, F[r.format]?.pairs ? e.partner_id : null].filter(Boolean).map(last).join(" & ") : "absent";
-        const w = m.ov ? m.ov.winner_side_id : m.st.done ? m.st.winner : m.st.leader;
-        const [sa, sb_] = D.sides;
-        const mine = [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me));
-        return `<div class="cm${mine ? " mine" : ""}"><span class="${w === sa.id ? "lead" : ""}" style="--c:${esc(sa.color)}">${esc(nm(m.ea))}</span><em>${esc(m.st.text)}</em><span class="r ${w === sb_.id ? "lead" : ""}" style="--c:${esc(sb_.color)}">${esc(nm(m.eb))}</span></div>`;
-      }).join("") || '<p class="updated">No matches.</p>'}</div>`;
+      body = `<div class="rmatches">${ms.map(m => matchRow(r, m)).join("") || '<p class="updated">No matches.</p>'}</div>`;
     }
     return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "final" ? "Final" : r.status === "revealed" ? "Live" : ""}</span></div><div class="updated">${esc(roundLine(r))}</div>${body}</div>`;
   }
