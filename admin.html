@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BCC Golf Admin</title>
+<meta name="theme-color" content="#1d6a43">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Archivo:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #f2f4ef; --surface: #ffffff; --ink: #17221b; --muted: #5d6a61; --line: #d9dfd6;
+  --green: #1d6a43; --green-soft: #e3efe7; --flag: #e8b923; --bad: #b3261e;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #5cc28a; --green-soft: #1f3327; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #5cc28a; --green-soft: #1f3327; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 var(--body); }
+header { background: var(--green); color: #fff; padding: 12px 16px; }
+header .in { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+header h1 { margin: 0; font: 700 24px/1 var(--display); letter-spacing: .02em; }
+header .who { font-size: 13px; opacity: .9; display: flex; gap: 12px; align-items: center; }
+header a, header button.link { color: #fff; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+nav.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+nav.tabs button { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+nav.tabs button[aria-current="page"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+h2 { font: 700 26px/1.1 var(--display); margin: 0 0 4px; }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+input, select { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); min-width: 0; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--green); }
+input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { width: 70px; } input.w-team { width: 220px; }
+.btn { font: inherit; font-weight: 600; border: 0; border-radius: 10px; background: var(--green); color: #fff; padding: 9px 14px; cursor: pointer; }
+.btn.secondary { background: transparent; color: var(--green); border: 1px solid var(--line); }
+.btn.danger { background: transparent; color: var(--bad); border: 1px solid var(--line); }
+.btn:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.saved { font-size: 12px; color: var(--green); min-width: 50px; }
+.err { color: var(--bad); font-size: 13px; }
+.signin { max-width: 420px; margin: 40px auto; display: grid; gap: 10px; }
+.signin label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pill { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); }
+.pill.warn { background: #fff3cd; color: #6b5200; }
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>BCC Golf · Admin</h1>
+  <div class="who"><span id="who"></span><a href="./">Open the app</a><button class="link" id="signOut" type="button" style="background:none;border:0;font:inherit;cursor:pointer;text-decoration:underline" hidden>Sign out</button></div>
+</div></header>
+
+<main>
+  <section class="card signin" id="signinCard" hidden>
+    <h2>Admin sign-in</h2>
+    <p class="note">Use the email the league has for you. We'll email a code.</p>
+    <form id="emailForm" class="signin" style="margin:0">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email">
+      <button class="btn" type="submit" id="sendBtn">Email me a sign-in code</button>
+    </form>
+    <form id="codeForm" class="signin" style="margin:0" hidden>
+      <label for="code">Code from the email</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code">
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+    <p class="err" id="signinErr" role="alert"></p>
+  </section>
+
+  <section class="card" id="notAdmin" hidden><h2>Admins only</h2><p class="note">You're signed in, but your player record isn't marked as an admin. Ask Nitin or Derek.</p></section>
+
+  <div id="adminUI" hidden style="display:grid;gap:16px">
+    <nav class="tabs" aria-label="Admin sections">
+      <button type="button" data-tab="players" aria-current="page">Players</button>
+      <button type="button" data-tab="teams">Teams</button>
+      <button type="button" data-tab="schedule">Schedule</button>
+      <button type="button" data-tab="teesheet">Tee sheet</button>
+      <button type="button" data-tab="courses">Courses</button>
+      <button type="button" data-tab="season">Season rules</button>
+    </nav>
+
+    <section class="card" data-panel="players">
+      <h2>Players</h2>
+      <p class="note">A player can sign in once their email is here. Changes save as you leave each box. Admins see the admin tools in the app and here.</p>
+      <div class="row" style="margin-bottom:12px">
+        <input id="pFilter" placeholder="Search names" style="width:200px">
+        <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="pShowInactive"> Show inactive</label>
+      </div>
+      <div class="scroll"><table id="playersTable"></table></div>
+      <h3 style="margin:18px 0 8px;font-size:15px">Add a player</h3>
+      <form class="row" id="addPlayer">
+        <input class="w-name" id="apLast" placeholder="Last name" required>
+        <input class="w-name" id="apFirst" placeholder="First name" required>
+        <input class="w-email" id="apEmail" type="email" placeholder="Email (optional)">
+        <button class="btn" type="submit">Add</button>
+      </form>
+    </section>
+
+    <section class="card" data-panel="teams" hidden>
+      <h2>Teams · <span id="seasonName"></span></h2>
+      <p class="note">Two players per team. Anyone not on a team can sub.</p>
+      <div class="scroll"><table id="teamsTable"></table></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addTeam">Add a team</button></div>
+    </section>
+
+    <section class="card" data-panel="schedule" hidden>
+      <h2>Schedule</h2>
+      <p class="note">"Rain out" moves that week and every later week back by 7 days, so the season ends a week later.</p>
+      <div class="scroll"><table id="eventsTable"></table></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addEvent">Add a week at the end</button></div>
+    </section>
+
+    <section class="card" data-panel="teesheet" hidden>
+      <h2>Tee sheet</h2>
+      <div class="row" style="margin-bottom:12px">
+        <label for="tsEvent" style="font-weight:600">Week</label>
+        <select id="tsEvent"></select>
+        <button class="btn secondary" type="button" id="tsCopy">Copy tee times from the week before</button>
+      </div>
+      <div class="scroll"><table id="teeTable"></table></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addMatch">Add a tee time</button></div>
+    </section>
+
+    <section class="card" data-panel="courses" hidden>
+      <h2>Courses</h2>
+      <p class="note">Rating, slope and par per tee for each nine. These drive handicaps.</p>
+      <div class="scroll"><table id="teesTable"></table></div>
+    </section>
+
+    <section class="card" data-panel="season" hidden>
+      <h2>Season rules</h2>
+      <p class="note">These numbers drive the weekly points, team results and standings.</p>
+      <form id="seasonForm" style="display:grid;gap:10px;max-width:520px"></form>
+    </section>
+  </div>
+</main>
+<div id="toast" hidden role="status"></div>
+
+<script src="vendor/supabase.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const sb = window.supabase.createClient("https://kgmshfggdsuipteowila.supabase.co", "sb_publishable_rq9snVi9Hca4vEYc0dhZjQ_KQQXRs9o",
+    { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+  const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  let toastT;
+  const toast = (msg, bad) => { const t = $("toast"); t.textContent = msg; t.style.background = bad ? "var(--bad)" : ""; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); };
+  const check = (error, ok = "Saved") => { if (error) { toast("Couldn't save: " + error.message, true); return false; } toast(ok); return true; };
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const fmtDate = d => { const x = new Date(d + "T12:00:00"); return `${DOW.at(x.getDay())} ${MON.at(x.getMonth())} ${x.getDate()}`; };
+  const addDays = (d, n) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+
+  // ---------- sign-in ----------
+  let email = "";
+  async function start() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { $("signinCard").hidden = false; return; }
+    const { data: me } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", session.user.id).maybeSingle();
+    $("signOut").hidden = false; $("signinCard").hidden = true;
+    $("who").textContent = me ? `${me.first_name} ${me.last_name}` : session.user.email;
+    if (!me || !me.is_admin) { $("notAdmin").hidden = false; return; }
+    $("adminUI").hidden = false;
+    await loadAll();
+  }
+  $("emailForm").onsubmit = async e => {
+    e.preventDefault(); email = $("email").value.trim().toLowerCase(); $("signinErr").textContent = "";
+    $("sendBtn").disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    $("sendBtn").disabled = false;
+    if (error) { $("signinErr").textContent = "Couldn't send the code. Try again in a minute."; return; }
+    $("emailForm").hidden = true; $("codeForm").hidden = false; $("code").focus();
+  };
+  $("codeForm").onsubmit = async e => {
+    e.preventDefault();
+    const { error } = await sb.auth.verifyOtp({ email, token: $("code").value.replace(/\D/g, ""), type: "email" });
+    if (error) { $("signinErr").textContent = "That code didn't work."; return; }
+    start();
+  };
+  $("signOut").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+  // ---------- tabs ----------
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+    document.querySelectorAll("[data-tab]").forEach(x => x.setAttribute("aria-current", x === b ? "page" : "false"));
+    document.querySelectorAll("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== b.dataset.tab);
+  });
+
+  // ---------- data ----------
+  let season, players = [], teams = [], members = [], events = [], courses = [], tees = [];
+  async function loadAll() {
+    ({ data: season } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle());
+    [{ data: players }, { data: courses }, { data: tees }] = await Promise.all([
+      sb.from("players").select("*").order("last_name").order("first_name"),
+      sb.from("courses").select("*").order("id"),
+      sb.from("tees").select("*").order("course_id").order("id")
+    ]);
+    if (season) {
+      $("seasonName").textContent = season.name;
+      [{ data: teams }, { data: events }] = await Promise.all([
+        sb.from("teams").select("*").eq("season_id", season.id).order("number"),
+        sb.from("events").select("*").eq("season_id", season.id).order("number")
+      ]);
+      const ids = teams.map(t => t.id);
+      ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
+    }
+    renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason();
+  }
+  const teamOf = pid => { const m = members.find(m => m.player_id === pid); return m && teams.find(t => t.id === m.team_id); };
+  const pname = p => `${p.last_name}, ${p.first_name}`;
+
+  // ---------- players ----------
+  function renderPlayers() {
+    const f = $("pFilter").value.trim().toLowerCase(), showOff = $("pShowInactive").checked;
+    const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f)));
+    $("playersTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Team</th><th>Tee</th><th>Admin</th><th>Active</th><th>Signed in</th></tr></thead><tbody>` +
+      list.map(p => { const t = teamOf(p.id); return `<tr data-id="${p.id}">
+        <td><b>${esc(pname(p))}</b></td>
+        <td><input class="w-email" type="email" data-f="email" value="${esc(p.email)}" placeholder="add email"></td>
+        <td>${t ? `#${t.number} ${esc(t.name)}` : '<span class="note">Sub</span>'}</td>
+        <td><select data-f="default_tee">${["Blue","White","Gold"].map(x => `<option${x === p.default_tee ? " selected" : ""}>${x}</option>`).join("")}</select></td>
+        <td><input type="checkbox" data-f="is_admin"${p.is_admin ? " checked" : ""} aria-label="Admin"></td>
+        <td><input type="checkbox" data-f="active"${p.active ? " checked" : ""} aria-label="Active"></td>
+        <td>${p.user_id ? '<span class="pill">Yes</span>' : (p.email ? '<span class="pill warn">Not yet</span>' : "")}</td></tr>`; }).join("") + `</tbody>`;
+    $("playersTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
+      const id = +el.closest("tr").dataset.id, f = el.dataset.f;
+      let v = el.type === "checkbox" ? el.checked : el.value.trim();
+      if (f === "email") v = v ? v.toLowerCase() : null;
+      if (f === "is_admin" && !v && players.filter(p => p.is_admin).length <= 1) { el.checked = true; return toast("Keep at least one admin.", true); }
+      const { error } = await sb.from("players").update({ [f]: v }).eq("id", id);
+      if (check(error)) Object.assign(players.find(p => p.id === id), { [f]: v }); else renderPlayers();
+    });
+  }
+  $("pFilter").oninput = renderPlayers; $("pShowInactive").onchange = renderPlayers;
+  $("addPlayer").onsubmit = async e => {
+    e.preventDefault();
+    const row = { last_name: $("apLast").value.trim(), first_name: $("apFirst").value.trim(), email: $("apEmail").value.trim().toLowerCase() || null };
+    const { data, error } = await sb.from("players").insert(row).select().single();
+    if (check(error, "Player added")) { players.push(data); players.sort((a, b) => pname(a).localeCompare(pname(b))); e.target.reset(); renderPlayers(); }
+  };
+
+  // ---------- teams ----------
+  function renderTeams() {
+    const opts = sel => `<option value="">—</option>` + players.filter(p => p.active).map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`).join("");
+    $("teamsTable").innerHTML = `<thead><tr><th>#</th><th>Team name</th><th>Player 1</th><th>Player 2</th><th></th></tr></thead><tbody>` +
+      teams.map(t => { const ms = members.filter(m => m.team_id === t.id).map(m => m.player_id); return `<tr data-id="${t.id}">
+        <td><input class="w-num" type="number" min="1" data-f="number" value="${t.number}"></td>
+        <td><input class="w-team" data-f="name" value="${esc(t.name)}"></td>
+        <td><select data-slot="0">${opts(ms[0])}</select></td>
+        <td><select data-slot="1">${opts(ms[1])}</select></td>
+        <td><button class="btn danger" type="button" data-del>Remove</button></td></tr>`; }).join("") + `</tbody>`;
+    $("teamsTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
+      const id = +el.closest("tr").dataset.id, v = el.dataset.f === "number" ? +el.value : el.value.trim();
+      const { error } = await sb.from("teams").update({ [el.dataset.f]: v }).eq("id", id);
+      if (check(error)) Object.assign(teams.find(t => t.id === id), { [el.dataset.f]: v });
+    });
+    $("teamsTable").querySelectorAll("[data-slot]").forEach(el => el.onchange = async () => {
+      const tr = el.closest("tr"), id = +tr.dataset.id;
+      const picks = [...tr.querySelectorAll("[data-slot]")].map(s => +s.value).filter(Boolean);
+      if (picks.length === 2 && picks[0] === picks[1]) { toast("Pick two different players.", true); return renderTeams(); }
+      const clash = picks.find(pid => members.some(m => m.player_id === pid && m.team_id !== id));
+      if (clash) { toast(`${pname(players.find(p => p.id === clash))} is already on another team.`, true); return renderTeams(); }
+      const del = await sb.from("team_players").delete().eq("team_id", id);
+      if (!check(del.error, "")) return;
+      if (picks.length) { const { error } = await sb.from("team_players").insert(picks.map(pid => ({ team_id: id, player_id: pid }))); if (!check(error)) return; } else toast("Saved");
+      members = members.filter(m => m.team_id !== id).concat(picks.map(pid => ({ team_id: id, player_id: pid })));
+      renderPlayers();
+    });
+    $("teamsTable").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+      const id = +b.closest("tr").dataset.id, t = teams.find(x => x.id === id);
+      if (!confirm(`Remove team #${t.number} ${t.name}? Its players become subs.`)) return;
+      const { error } = await sb.from("teams").delete().eq("id", id);
+      if (check(error, "Team removed")) { teams = teams.filter(x => x.id !== id); members = members.filter(m => m.team_id !== id); renderTeams(); renderPlayers(); }
+    });
+  }
+  $("addTeam").onclick = async () => {
+    if (!season) return toast("No current season set.", true);
+    const n = Math.max(0, ...teams.map(t => t.number)) + 1;
+    const { data, error } = await sb.from("teams").insert({ season_id: season.id, number: n, name: `Team ${n}` }).select().single();
+    if (check(error, "Team added")) { teams.push(data); renderTeams(); }
+  };
+
+  // ---------- schedule ----------
+  const STAT = { scheduled: "Scheduled", in_progress: "In progress", final: "Final", rained_out: "Cancelled" };
+  function renderEvents() {
+    $("eventsTable").innerHTML = `<thead><tr><th>Wk</th><th>Date</th><th>Nine</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>` +
+      events.map(e => `<tr data-id="${e.id}">
+        <td><b>${e.number}</b></td>
+        <td><input type="date" data-f="play_date" value="${e.play_date}"> <span class="note">${fmtDate(e.play_date)}</span></td>
+        <td><select data-f="course_id">${courses.map(c => `<option value="${c.id}"${c.id === e.course_id ? " selected" : ""}>${esc(c.name.replace("Avon Fields - ", ""))}</option>`).join("")}</select></td>
+        <td><select data-f="status">${Object.entries(STAT).map(([k, v]) => `<option value="${k}"${k === e.status ? " selected" : ""}>${v}</option>`).join("")}</select></td>
+        <td><input data-f="note" value="${esc(e.note)}" placeholder="—" style="width:180px"></td>
+        <td>${e.status === "final" ? "" : `<button class="btn secondary" type="button" data-rain>Rain out</button>`}</td></tr>`).join("") + `</tbody>`;
+    $("eventsTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
+      const id = +el.closest("tr").dataset.id, f = el.dataset.f;
+      const v = f === "course_id" ? +el.value : (el.value.trim() || (f === "note" ? null : el.value));
+      const { error } = await sb.from("events").update({ [f]: v }).eq("id", id);
+      if (check(error)) { Object.assign(events.find(e => e.id === id), { [f]: v }); if (f === "play_date") renderEvents(); }
+    });
+    $("eventsTable").querySelectorAll("[data-rain]").forEach(b => b.onclick = async () => {
+      const ev = events.find(e => e.id === +b.closest("tr").dataset.id);
+      const later = events.filter(e => e.number >= ev.number && e.status !== "final");
+      if (!confirm(`Rain out week ${ev.number} (${fmtDate(ev.play_date)})?\n\nWeeks ${ev.number} to ${later.at(-1).number} each move back 7 days. The last week becomes ${fmtDate(addDays(later.at(-1).play_date, 7))}.`)) return;
+      for (const e of [...later].reverse()) {
+        const upd = { play_date: addDays(e.play_date, 7) };
+        if (e.id === ev.id) upd.note = `Rained out ${fmtDate(e.play_date)}`;
+        const { error } = await sb.from("events").update(upd).eq("id", e.id);
+        if (!check(error, "")) return loadAll();
+        Object.assign(e, upd);
+      }
+      toast("Schedule moved back a week"); renderEvents(); renderTeeEvents();
+    });
+  }
+  $("addEvent").onclick = async () => {
+    if (!season) return;
+    const last = events.at(-1), n = last ? last.number + 1 : 1;
+    const date = last ? addDays(last.play_date, 7) : new Date().toISOString().slice(0, 10);
+    const course = last ? (courses.find(c => c.id !== last.course_id) || courses[0]).id : courses[0].id;
+    const { data, error } = await sb.from("events").insert({ season_id: season.id, number: n, play_date: date, course_id: course }).select().single();
+    if (check(error, "Week added")) { events.push(data); renderEvents(); renderTeeEvents(); }
+  };
+
+  // ---------- tee sheet ----------
+  let matches = [];
+  function renderTeeEvents() {
+    const cur = $("tsEvent").value;
+    $("tsEvent").innerHTML = events.map(e => `<option value="${e.id}">Week ${e.number} · ${fmtDate(e.play_date)} · ${esc((courses.find(c => c.id === e.course_id) || {}).name || "").replace("Avon Fields - ", "")}</option>`).join("");
+    if (cur && events.some(e => String(e.id) === cur)) $("tsEvent").value = cur;
+    else { const today = new Date().toISOString().slice(0, 10); const next = events.find(e => e.play_date >= today) || events[0]; if (next) $("tsEvent").value = next.id; }
+    loadMatches();
+  }
+  async function loadMatches() {
+    const ev = +$("tsEvent").value; if (!ev) return;
+    const { data } = await sb.from("matchups").select("*").eq("event_id", ev).order("tee_time");
+    matches = data || []; renderMatches();
+  }
+  function renderMatches() {
+    const topt = sel => `<option value="">—</option>` + teams.map(t => `<option value="${t.id}"${t.id === sel ? " selected" : ""}>#${t.number} ${esc(t.name)}</option>`).join("");
+    $("teeTable").innerHTML = `<thead><tr><th>Tee time</th><th>Start hole</th><th>Team</th><th></th><th>Team</th><th></th></tr></thead><tbody>` +
+      (matches.length ? matches.map(m => `<tr data-id="${m.id}">
+        <td><input type="time" data-f="tee_time" value="${m.tee_time.slice(0, 5)}"></td>
+        <td><input class="w-num" type="number" min="1" max="18" data-f="start_hole" value="${m.start_hole}"></td>
+        <td><select data-f="team_a">${topt(m.team_a)}</select></td><td class="note">vs</td>
+        <td><select data-f="team_b">${topt(m.team_b)}</select></td>
+        <td><button class="btn danger" type="button" data-del>Remove</button></td></tr>`).join("") : `<tr><td colspan="6" class="note">No tee times yet for this week.</td></tr>`) + `</tbody>`;
+    $("teeTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
+      const id = +el.closest("tr").dataset.id, f = el.dataset.f, v = f === "tee_time" ? el.value : +el.value;
+      if (!v) return;
+      const { error } = await sb.from("matchups").update({ [f]: v }).eq("id", id);
+      if (check(error)) Object.assign(matches.find(m => m.id === id), { [f]: v });
+    });
+    $("teeTable").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+      const id = +b.closest("tr").dataset.id;
+      const { error } = await sb.from("matchups").delete().eq("id", id);
+      if (check(error, "Removed")) { matches = matches.filter(m => m.id !== id); renderMatches(); }
+    });
+  }
+  $("tsEvent").onchange = loadMatches;
+  $("addMatch").onclick = async () => {
+    if (teams.length < 2) return toast("Add teams first.", true);
+    const last = matches.at(-1);
+    let time = "17:00";
+    if (last) { const [h, m] = last.tee_time.split(":").map(Number); const t = h * 60 + m + 8; time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
+    const used = new Set(matches.flatMap(m => [m.team_a, m.team_b]));
+    const free = teams.filter(t => !used.has(t.id));
+    const a = (free[0] || teams[0]).id, b = (free[1] || teams[1]).id;
+    const { data, error } = await sb.from("matchups").insert({ event_id: +$("tsEvent").value, tee_time: time, start_hole: 1, team_a: a, team_b: b }).select().single();
+    if (check(error, "Tee time added")) { matches.push(data); renderMatches(); }
+  };
+  $("tsCopy").onclick = async () => {
+    const i = events.findIndex(e => e.id === +$("tsEvent").value);
+    if (i < 1) return toast("There's no week before this one.", true);
+    const { data: prev } = await sb.from("matchups").select("tee_time,start_hole,team_a,team_b").eq("event_id", events[i - 1].id).order("tee_time");
+    if (!prev || !prev.length) return toast("The week before has no tee times.", true);
+    if (matches.length && !confirm("Replace this week's tee times with last week's?")) return;
+    if (matches.length) { const { error } = await sb.from("matchups").delete().eq("event_id", events[i].id); if (!check(error, "")) return; }
+    const { error } = await sb.from("matchups").insert(prev.map(m => ({ ...m, event_id: events[i].id })));
+    if (check(error, "Copied")) loadMatches();
+  };
+
+  // ---------- courses ----------
+  function renderTees() {
+    $("teesTable").innerHTML = `<thead><tr><th>Nine</th><th>Tee</th><th>Rating</th><th>Slope</th><th>Par</th></tr></thead><tbody>` +
+      tees.map(t => `<tr data-id="${t.id}"><td>${esc((courses.find(c => c.id === t.course_id) || {}).name || "")}</td><td><b>${esc(t.name)}</b></td>
+        <td><input class="w-num" type="number" step="0.1" data-f="rating" value="${t.rating}"></td>
+        <td><input class="w-num" type="number" data-f="slope" value="${t.slope}"></td>
+        <td><input class="w-num" type="number" data-f="par" value="${t.par}"></td></tr>`).join("") + `</tbody>`;
+    $("teesTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
+      const id = +el.closest("tr").dataset.id, v = +el.value;
+      const { error } = await sb.from("tees").update({ [el.dataset.f]: v }).eq("id", id);
+      check(error);
+    });
+  }
+
+  // ---------- season rules ----------
+  function renderSeason() {
+    if (!season) { $("seasonForm").innerHTML = '<p class="note">No current season.</p>'; return; }
+    const f = (k, label, help) => `<label style="display:grid;gap:4px"><span style="font-weight:600">${label}</span><input data-k="${k}" value="${esc(Array.isArray(season[k]) ? season[k].join(", ") : season[k])}"><span class="note" style="margin:0">${help}</span></label>`;
+    $("seasonForm").innerHTML =
+      f("ghost_net", "Ghost score (net)", "Locked net score used when a team has no sub.") +
+      f("points_table", "Weekly points by place", "1st place first, separated by commas.") +
+      f("team_win", "Team win", "Team points for winning the weekly match.") +
+      f("team_tie", "Team tie", "Team points for a tie.") +
+      f("best_of", "Weeks that count", "Standings use each player's best this many weeks.") +
+      f("handicap_rounds", "Handicap: recent rounds", "How many recent rounds the handicap looks at.") +
+      f("handicap_best", "Handicap: best rounds used", "How many of those count.") +
+      f("handicap_percent", "Handicap percent", "Share of the handicap index players get.");
+    $("seasonForm").querySelectorAll("[data-k]").forEach(el => el.onchange = async () => {
+      const k = el.dataset.k;
+      const v = k === "points_table" ? el.value.split(/[,\s]+/).filter(Boolean).map(Number) : +el.value;
+      if ((Array.isArray(v) ? v : [v]).some(x => !Number.isFinite(x))) return toast("Numbers only, please.", true);
+      const { error } = await sb.from("seasons").update({ [k]: v }).eq("id", season.id);
+      if (check(error)) season[k] = v;
+    });
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
