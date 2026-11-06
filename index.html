@@ -403,28 +403,33 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 
 <div class="signin" id="signin" hidden>
   <div class="si-card">
-    <div class="si-logo"><b>BCC Golf</b><span class="note">Sign in with your GolfSoftware league login</span></div>
+    <div class="si-logo"><b>BCC Golf</b><span class="note">Sign in with the email the league has for you</span></div>
     <div class="card">
       <form id="siForm" novalidate>
-        <label for="siUser">Email or phone</label>
-        <input id="siUser" type="text" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false">
-        <label for="siPass">Password</label>
-        <input id="siPass" type="password" autocomplete="current-password">
+        <label for="siEmail">Email</label>
+        <input id="siEmail" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false">
         <p class="si-err" id="siErr" role="alert"></p>
-        <div class="si-row">
-          <label class="si-keep"><input type="checkbox" id="siKeep" checked> Keep me signed in</label>
-        </div>
-        <button class="btn" type="submit">Sign in</button>
+        <button class="btn" type="submit" id="siSend">Email me a sign-in code</button>
+      </form>
+      <form id="siCodeForm" novalidate hidden>
+        <p class="note" id="siSent" style="margin:0 0 4px"></p>
+        <label for="siCode">Code from the email</label>
+        <input id="siCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" spellcheck="false">
+        <p class="si-err" id="siCodeErr" role="alert"></p>
+        <button class="btn" type="submit" id="siVerify">Sign in</button>
+        <button class="linkbtn" type="button" id="siBack" style="margin-top:12px;justify-self:start">Use a different email</button>
       </form>
     </div>
     <div class="card">
-      <p class="label">Prototype only</p>
-      <p class="note" style="margin:6px 0 10px">This page can't reach GolfSoftware, so any email and password works. Pick who to try it as:</p>
-      <div class="seg" role="group" aria-label="Try as">
-        <button type="button" data-as="admin" aria-pressed="true">Admin (Nitin)</button>
-        <button type="button" data-as="player" aria-pressed="false">Player</button>
+      <p class="label">Just looking?</p>
+      <p class="note" style="margin:6px 0 10px">Try the app with last season's data. Nothing you enter in the demo is saved for anyone else.</p>
+      <div class="si-row" style="margin-top:0">
+        <div class="seg" role="group" aria-label="Try as">
+          <button type="button" data-as="admin" aria-pressed="false">Admin</button>
+          <button type="button" data-as="player" aria-pressed="true">Player</button>
+        </div>
+        <button class="btn small secondary" type="button" id="siDemo">Try the demo</button>
       </div>
-      <p class="note" style="margin:10px 0 0">In the real app, admin rights come from GolfSoftware: anyone set as a league admin there gets admin here. "Keep me signed in" saves the login in the phone's secure storage and signs back in quietly when the session runs out.</p>
     </div>
   </div>
 </div>
@@ -875,7 +880,7 @@ the spirit, intent, and fairness of league competition.</p>
 
     <div class="card pad map-tool" id="mapTool">
       <p class="label" style="margin-bottom:6px">Map this green (admin)</p>
-      <p class="note" style="margin:0 0 10px">Stand on the spot and tap. Wait until accuracy is under about 5 yards. Each spot saves on this phone; tap Share when you're done so the greens can be added for everyone.</p>
+      <p class="note" style="margin:0 0 10px">Stand on the spot and tap. Wait until accuracy is under about 5 yards. When you're signed in with your league email, each spot is saved for everyone right away. In the demo it stays on this phone.</p>
       <div class="map-btns">
         <button class="btn small secondary" type="button" data-set="f">Set front</button>
         <button class="btn small secondary" type="button" data-set="m">Set middle</button>
@@ -1175,44 +1180,84 @@ the spirit, intent, and fairness of league competition.</p>
 })();
 </script>
 
+<script src="vendor/supabase.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  // Sign-in (prototype: no real check; real app calls GolfSoftware Player/Signin -> adminId,playerId,key)
-  let tryAs = "admin";
+  // Sign-in: league members get a one-time code by email (Supabase Auth); the demo stays available.
+  const SB_URL = "https://kgmshfggdsuipteowila.supabase.co", SB_KEY = "sb_publishable_rq9snVi9Hca4vEYc0dhZjQ_KQQXRs9o";
+  const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }) : null;
+  window.BCC = { sb, getSession: () => session };
+  let tryAs = "player";
   document.querySelectorAll("[data-as]").forEach(b => b.onclick = () => {
     tryAs = b.dataset.as;
     document.querySelectorAll("[data-as]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   });
-  const readSession = () => { try { return JSON.parse(localStorage.getItem("bcc-session")) || JSON.parse(sessionStorage.getItem("bcc-session")); } catch (e) { return null; } };
-  let session = readSession();
+  const readDemo = () => { try { return JSON.parse(localStorage.getItem("bcc-session")); } catch (e) { return null; } };
+  let session = readDemo();
   function applySession() {
     $("signin").hidden = !!session;
     document.body.classList.toggle("is-admin", !!(session && session.admin));
     if (session) {
       $("whoName").textContent = session.name;
-      $("whoRole").textContent = session.admin ? "League admin" : "Player";
+      $("whoRole").textContent = (session.admin ? "League admin" : "Player") + (session.real ? "" : " · demo");
     }
     if (window.onSession) window.onSession();
+    window.dispatchEvent(new Event("bcc-session"));
   }
-  $("siForm").addEventListener("submit", e => {
-    e.preventDefault();
-    const u = $("siUser").value.trim(), pw = $("siPass").value;
-    if (!u) { $("siErr").textContent = "Enter your email or phone number."; return; }
-    if (pw.length < 8) { $("siErr").textContent = "Passwords are at least 8 characters."; return; }
-    $("siErr").textContent = "";
-    session = tryAs === "admin" ? { name: "Nitin", admin: true } : { name: "Demo player", admin: false };
-    try {
-      localStorage.removeItem("bcc-session"); sessionStorage.removeItem("bcc-session");
-      ($("siKeep").checked ? localStorage : sessionStorage).setItem("bcc-session", JSON.stringify(session));
-    } catch (err) {}
-    $("siPass").value = "";
+  async function loadMember() {
+    if (!sb) return;
+    const { data: { session: s } } = await sb.auth.getSession();
+    if (!s) return;
+    const { data, error } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", s.user.id).maybeSingle();
+    if (data) {
+      session = { real: true, playerId: data.id, name: `${data.first_name} ${data.last_name}`, admin: data.is_admin };
+      try { localStorage.removeItem("bcc-session"); } catch (e) {}
+    } else if (!error) {
+      await sb.auth.signOut();
+      session = null;
+      showStep("email");
+      $("siErr").textContent = `${s.user.email} isn't on the league list yet. Ask Nitin or Derek to add it.`;
+    }
     applySession();
+  }
+  let siEmail = "";
+  function showStep(step) { $("siForm").hidden = step !== "email"; $("siCodeForm").hidden = step !== "code"; }
+  $("siForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    siEmail = $("siEmail").value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(siEmail)) { $("siErr").textContent = "Enter your email address."; return; }
+    if (!sb) { $("siErr").textContent = "Can't reach the league server. Check your signal and try again."; return; }
+    $("siErr").textContent = ""; $("siSend").disabled = true; $("siSend").textContent = "Sending…";
+    const { error } = await sb.auth.signInWithOtp({ email: siEmail, options: { shouldCreateUser: true } });
+    $("siSend").disabled = false; $("siSend").textContent = "Email me a sign-in code";
+    if (error) { $("siErr").textContent = /rate|seconds/i.test(error.message) ? "Too many codes sent. Wait a minute and try again." : "Couldn't send the code. Try again in a minute."; return; }
+    $("siSent").textContent = `We sent a code to ${siEmail}. It can take a minute; check spam too.`;
+    $("siCode").value = ""; $("siCodeErr").textContent = ""; showStep("code"); $("siCode").focus();
   });
-  $("signOutBtn").onclick = () => {
-    try { localStorage.removeItem("bcc-session"); sessionStorage.removeItem("bcc-session"); } catch (e) {}
+  $("siCodeForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const token = $("siCode").value.replace(/\D/g, "");
+    if (token.length < 6) { $("siCodeErr").textContent = "Enter the code from the email."; return; }
+    $("siVerify").disabled = true;
+    const { error } = await sb.auth.verifyOtp({ email: siEmail, token, type: "email" });
+    $("siVerify").disabled = false;
+    if (error) { $("siCodeErr").textContent = "That code didn't work. Check it, or go back and send a new one."; return; }
+    showStep("email");
+    await loadMember();
+  });
+  $("siBack").onclick = () => showStep("email");
+  $("siDemo").onclick = () => {
+    session = tryAs === "admin" ? { name: "Demo admin", admin: true } : { name: "Demo player", admin: false };
+    try { localStorage.setItem("bcc-session", JSON.stringify(session)); } catch (err) {}
+    applySession();
+  };
+  $("signOutBtn").onclick = async () => {
+    try { localStorage.removeItem("bcc-session"); } catch (e) {}
+    if (session && session.real && sb) await sb.auth.signOut();
     session = null; setMenu(false); applySession();
   };
+  loadMember();
 
   // Router: #home, #score, #gps
   const views = { home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
@@ -1351,7 +1396,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   const load = () => { try { return JSON.parse(localStorage.getItem("bcc-skins")) || DEFAULT; } catch (e) { return DEFAULT; } };
   let sk = load();
   $("skIdeas").innerHTML = [...new Set(Object.values(GAMES).flat())].map(x => `<option value="${x}"></option>`).join("");
-  const EVT = { n: 22, date: "Aug 25" };
+  let EVT = { n: 22, date: "Aug 25" };
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const loadHist = () => { try { return JSON.parse(localStorage.getItem("bcc-skins-hist")) || []; } catch (e) { return []; } };
   let hist = loadHist();
@@ -1368,18 +1413,44 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     $("skWinner").textContent = sk.winner || "Posted after the round";
   }
   $("skEditBtn").onclick = () => {
-    $("skCustom").value = sk.title;
-    $("skNote").value = sk.note || ""; $("skWin").value = sk.winner || "";
+    $("skCustom").value = sk.unposted ? "" : sk.title;
+    $("skNote").value = sk.unposted ? "" : (sk.note || ""); $("skWin").value = sk.winner || "";
     $("skForm").hidden = false; $("skView").hidden = true; $("skEditBtn").hidden = true;
   };
   const close = () => { $("skForm").hidden = true; $("skView").hidden = false; $("skEditBtn").hidden = !document.body.classList.contains("is-admin"); };
-  window.onSession = close;
+  // League members share skins through the database; the demo keeps them on this phone.
+  const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const dshort = d => `${MON3.at(+d.slice(5, 7) - 1)} ${+d.slice(8, 10)}`;
+  const shared = () => { const s = window.BCC && BCC.getSession(); return !!(s && s.real && BCC.sb); };
+  async function loadShared() {
+    if (!shared()) return;
+    const sb = BCC.sb;
+    const { data: season } = await sb.from("seasons").select("id").eq("is_current", true).maybeSingle();
+    if (!season) return;
+    const { data: evs } = await sb.from("events").select("id,number,play_date").eq("season_id", season.id).order("number");
+    if (!evs || !evs.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const ev = evs.find(e => e.play_date >= today) || evs.at(-1);
+    EVT = { n: ev.number, date: dshort(ev.play_date), id: ev.id };
+    const { data: rows } = await sb.from("skins").select("event_id,game,details,winner").in("event_id", evs.map(e => e.id));
+    const byId = new Map(evs.map(e => [e.id, e]));
+    const cur = (rows || []).find(r => r.event_id === ev.id);
+    sk = cur ? { title: cur.game, note: cur.details || "", winner: cur.winner || "" } : { title: "Not posted yet", note: `Week ${ev.number} · ${dshort(ev.play_date)}`, winner: "", unposted: true };
+    hist = (rows || []).filter(r => r.winner).map(r => { const e = byId.get(r.event_id); return { n: e.number, date: dshort(e.play_date), title: r.game, winner: r.winner }; });
+    renderSkins(); renderHist();
+  }
+  window.onSession = () => { close(); loadShared(); };
   $("skCancel").onclick = close;
   $("skForm").addEventListener("submit", e => {
     e.preventDefault();
     const title = $("skCustom").value.trim();
     if (!title) { $("skCustom").focus(); return; }
     sk = { title, note: $("skNote").value.trim(), winner: $("skWin").value.trim() };
+    if (shared() && EVT.id) {
+      BCC.sb.from("skins").upsert({ event_id: EVT.id, game: sk.title, details: sk.note || null, winner: sk.winner || null }).then(({ error }) => {
+        if (error) alert("Couldn't save the skins post. Check your signal and try again."); else loadShared();
+      });
+    }
     hist = hist.filter(r => r.n !== EVT.n);
     if (sk.winner) hist.push({ n: EVT.n, date: EVT.date, title: sk.title, winner: sk.winner });
     try { localStorage.setItem("bcc-skins", JSON.stringify(sk)); localStorage.setItem("bcc-skins-hist", JSON.stringify(hist)); } catch (err) {}
@@ -1404,6 +1475,25 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   const KEY = "bcc-greens";
   const loadLocal = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
   let local = loadLocal();
+  // League members share mapped greens through the database.
+  const shared = () => { const s = window.BCC && BCC.getSession(); return !!(s && s.real && BCC.sb); };
+  const courseIds = {};
+  async function loadShared() {
+    if (!shared()) return;
+    const { data: cs } = await BCC.sb.from("courses").select("id,name");
+    (cs || []).forEach(c => { courseIds[/Back/.test(c.name) ? "B" : "F"] = c.id; });
+    const { data: gs } = await BCC.sb.from("greens").select("*");
+    for (const k in GREENS) delete GREENS[k];
+    (gs || []).forEach(g => {
+      const o = {};
+      if (g.front_lat != null) o.f = [g.front_lat, g.front_lon];
+      if (g.mid_lat != null) o.m = [g.mid_lat, g.mid_lon];
+      if (g.back_lat != null) o.b = [g.back_lat, g.back_lon];
+      GREENS[g.hole] = o;
+    });
+    render();
+  }
+  window.addEventListener("bcc-session", loadShared);
   const spots = h => Object.assign({}, GREENS[h] || {}, local[h] || {});
   let nine = "F", idx = 0, fix = null, watch = null;
   const holeNo = () => NINES[nine].first + idx;
@@ -1485,7 +1575,16 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     if (!fix) { $("mapStatus").textContent = "Turn on GPS first."; return; }
     if (fix.acc > 12 && !confirm(`Accuracy is only ± ${Math.round(fix.acc)} yds. Save anyway?`)) return;
     const h = holeNo();
-    local[h] = Object.assign({}, local[h], { [b.dataset.set]: [+fix[0].toFixed(7), +fix[1].toFixed(7)] });
+    const spot = [+fix[0].toFixed(7), +fix[1].toFixed(7)];
+    if (shared()) {
+      const col = { f: "front", m: "mid", b: "back" }[b.dataset.set];
+      const course = courseIds[h >= 10 ? "B" : "F"];
+      GREENS[h] = Object.assign({}, GREENS[h], { [b.dataset.set]: spot }); render();
+      BCC.sb.from("greens").upsert({ course_id: course, hole: h, [col + "_lat"]: spot[0], [col + "_lon"]: spot[1], updated_at: new Date().toISOString() })
+        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save that spot. Check your signal and tap again." : $("mapStatus").textContent + " Saved for everyone."; });
+      return;
+    }
+    local[h] = Object.assign({}, local[h], { [b.dataset.set]: spot });
     save(); render();
   });
   $("mapClear").onclick = () => {
@@ -1502,7 +1601,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
 
   // Re-check admin state when the GPS tab opens.
   window.addEventListener("hashchange", () => { if (location.hash === "#gps") render(); });
-  render();
+  render(); loadShared();
 })();
 </script>
 <script>
