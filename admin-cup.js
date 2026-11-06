@@ -107,7 +107,7 @@
 
       <h3 style="margin:18px 0 8px;font-size:15px">Players</h3>
       <p class="note">Sides stay the same for the whole Cup. Put new players on a side as they join. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
-      <div class="row" style="margin-bottom:8px"><button class="btn secondary" type="button" id="cupRefresh">Refresh handicaps</button></div>
+      <div class="row" style="margin-bottom:8px">${D.rounds.some(r => r.status === "revealed" || r.status === "final") ? '<span class="pill">Handicaps locked: the first round has started</span>' : '<button class="btn secondary" type="button" id="cupRefresh">Refresh handicaps</button><span class="note" style="margin:0">Use this once the league season is final. It locks when the first round is revealed.</span>'}</div>
       <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
         ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side>${sideOpts(c?.side_id, "Not playing")}</select></td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
       </tbody></table></div>
@@ -188,7 +188,7 @@
         : await sb.from("cup_players").delete().eq("cup_id", cup.id).eq("player_id", pid);
       if (check(r.error)) loadCup();
     });
-    $("cupRefresh").onclick = async () => {
+    if ($("cupRefresh")) $("cupRefresh").onclick = async () => {
       if (!confirm("Copy everyone's current league index into the Cup? Strokes in matches not yet finished will follow.")) return;
       const rows = D.cp.map(c => ({ cup_id: cup.id, player_id: c.player_id, side_id: c.side_id, handicap_index: A.hcps.get(c.player_id)?.handicap_index ?? c.handicap_index }));
       const { error } = await sb.from("cup_players").upsert(rows, { onConflict: "cup_id,player_id" }); if (check(error, "Handicaps refreshed")) loadCup();
