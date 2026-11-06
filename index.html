@@ -455,13 +455,13 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
       <div class="hero-top">
         <div>
           <p class="label">This week</p>
-          <div class="evt num">Event 22 <span>of 22</span></div>
-          <div class="evt-sub">Tue Aug 25 · Avon Fields Front · first tee 5:00 PM</div>
+          <div class="evt num" id="hEvt">Event 22 <span>of 22</span></div>
+          <div class="evt-sub" id="hSub">Tue Aug 25 · Avon Fields Front · first tee 5:00 PM</div>
         </div>
-        <div class="tee"><small>Your tee</small><b class="num">5:08</b><small>PM · hole 1</small></div>
+        <div class="tee" id="hTee"><small>Your tee</small><b class="num">5:08</b><small>PM · hole 1</small></div>
       </div>
       <div class="hero-foot">
-        <span>Playing with Two Hearted Ail (Ebbeler, Ghost)</span>
+        <span id="hWith">Playing with Two Hearted Ail (Ebbeler, Ghost)</span>
         <a class="btn small" href="#score">Start scoring</a>
       </div>
     </div>
@@ -491,23 +491,23 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     </div>
 
     <section style="display:grid;gap:8px" aria-labelledby="psl">
-      <div class="head"><p class="label" id="psl">Player standings</p><span class="updated">18 weeks played · 3 lowest dropped</span></div>
+      <div class="head"><p class="label" id="psl">Player standings</p><span class="updated" id="pslNote">18 weeks played · 3 lowest dropped</span></div>
       <div class="card"><table class="stand" id="playerStand"></table></div>
-      <div class="head"><span class="updated">Ranked by Best 15. Missed weeks count as 0, as the rules sheet says.</span><button class="linkbtn" id="moreP" type="button">Show all 20</button></div>
+      <div class="head"><span class="updated" id="pslRule">Ranked by Best 15. Missed weeks count as 0, as the rules sheet says.</span><button class="linkbtn" id="moreP" type="button">Show all 20</button></div>
     </section>
 
     <section style="display:grid;gap:8px" aria-labelledby="tsl">
-      <div class="head"><p class="label" id="tsl">Team standings</p><span class="updated">2026 season · events 1 to 21</span></div>
+      <div class="head"><p class="label" id="tsl">Team standings</p><span class="updated" id="tslNote">2026 season · events 1 to 21</span></div>
       <div class="card"><table class="stand" id="teamStand"></table></div>
     </section>
 
-    <section style="display:grid;gap:8px" aria-labelledby="ssl">
+    <section style="display:grid;gap:8px" aria-labelledby="ssl" id="statsSec">
       <div class="head"><p class="label" id="ssl">Season stats</p><span class="updated">Averages per 9 holes · events 1 to 21</span></div>
       <div class="card"><table class="stand stats" id="seasonStats"></table></div>
       <div class="head"><span class="updated">Tap a column to sort; tap again to flip.</span><button class="linkbtn" id="moreS" type="button">Show all 20</button></div>
     </section>
 
-    <p class="note">Standings, season stats and the skins game list come from your GolfSoftware site (pulled Nov 6). The 2026 season used the old points rules; next year these tables fill from the new weekly points.</p>
+    <p class="note" id="homeNote">Standings, season stats and the skins game list come from your GolfSoftware site (pulled Nov 6). The 2026 season used the old points rules; next year these tables fill from the new weekly points.</p>
   </section>
 
   <section class="view" id="v-score" aria-label="Score" hidden>
@@ -1374,6 +1374,7 @@ the spirit, intent, and fairness of league competition.</p>
     }
 
     function rosterOf(team) {
+      if (!team || !team.id) return [];
       const lu = ctx.lineups.filter(l => l.team_id === team.id);
       if (lu.length) return lu.map(l => l.kind === "ghost" ? { ghost: true } : { p: l.players, tee: l.tee || l.players?.default_tee, sub: l.kind === "sub" });
       return (team.team_players || []).map(tp => ({ p: tp.players, tee: tp.players?.default_tee }));
@@ -1446,6 +1447,64 @@ the spirit, intent, and fairness of league competition.</p>
       const { data, error } = await sb.from("scores").select("player_id,hole,strokes,putts,fairway,green").eq("event_id", ctx.ev.id);
       if (error) return;
       window.BCCScore.setLive(build(data), { quiet, keepPending: quiet });
+      if (!quiet) renderHome();
+    }
+
+    // Home: this week's card and season standings from finalized weeks
+    async function renderHome() {
+      const { ev, matchups, teams } = ctx, season = { best_of: 15, ...ctx.season };
+      const { data: evs } = await sb.from("events").select("id,number,status").eq("season_id", season.id).order("number");
+      const total = (evs || []).length, finals = (evs || []).filter(e => e.status === "final").map(e => e.id);
+      const teamById = new Map(teams.map(t => [t.id, t]));
+      const me = session.playerId;
+      const myMatch = matchups.find(m => [m.team_a, m.team_b].some(tid => rosterOf(teamById.get(tid) || {}).some(r => r.p?.id === me)));
+      $("hEvt").innerHTML = `Week ${ev.number} <span>of ${total}</span>`;
+      $("hSub").textContent = `${fmtDate(ev.play_date)} · ${(ctx.course?.name || "").replace("Avon Fields - ", "Avon Fields ")}${matchups[0] ? " · first tee " + fmtTime(matchups[0].tee_time) : ""}`;
+      if (myMatch) {
+        const [h, mm] = myMatch.tee_time.split(":").map(Number);
+        $("hTee").innerHTML = `<small>Your tee</small><b class="num">${(h + 11) % 12 + 1}:${String(mm).padStart(2, "0")}</b><small>PM</small>`;
+        const mine = [myMatch.team_a, myMatch.team_b].find(tid => rosterOf(teamById.get(tid)).some(r => r.p?.id === me)), other = mine === myMatch.team_a ? myMatch.team_b : myMatch.team_a;
+        const ot = teamById.get(other);
+        $("hWith").textContent = `Playing with ${ot ? ot.name : "?"} (${rosterOf(ot).map(r => r.ghost ? "Ghost" : r.p?.last_name).join(", ")})`;
+      } else {
+        $("hTee").innerHTML = `<small>Your tee</small><b class="num">–</b><small>not set</small>`;
+        $("hWith").textContent = matchups.length ? "You're not in a group this week. Ask an admin if you're subbing." : "The tee sheet for this week isn't set yet.";
+      }
+      $("statsSec").hidden = true; $("homeNote").hidden = true;
+      $("pslNote").textContent = `${finals.length} week${finals.length === 1 ? "" : "s"} final · best ${season.best_of} count`;
+      $("tslNote").textContent = `${season.name} · ${finals.length} week${finals.length === 1 ? "" : "s"} final`;
+      $("pslRule").textContent = `Ranked by Best ${season.best_of}: each golfer's ${season.best_of} best weeks of points. Missed weeks count as 0.`;
+      if (!finals.length) {
+        $("playerStand").innerHTML = `<tbody><tr><td class="l" colspan="5" style="padding:14px 12px">Standings start after week 1 is final.</td></tr></tbody>`;
+        $("teamStand").innerHTML = `<tbody><tr><td class="l" colspan="4" style="padding:14px 12px">Standings start after week 1 is final.</td></tr></tbody>`;
+        $("moreP").hidden = true; return;
+      }
+      const [{ data: res }, { data: tres }] = await Promise.all([
+        sb.from("results").select("event_id,player_id,points,players(first_name,last_name)").in("event_id", finals).not("player_id", "is", null),
+        sb.from("team_results").select("event_id,team_id,match_points,player_points,total").in("event_id", finals)
+      ]);
+      const byP = new Map();
+      (res || []).forEach(r => { const x = byP.get(r.player_id) || { id: r.player_id, name: `${r.players?.last_name}, ${r.players?.first_name}`, pts: [] }; x.pts.push(+r.points); byP.set(r.player_id, x); });
+      const pl = [...byP.values()].map(x => ({ ...x, played: x.pts.length, total: x.pts.reduce((a, b) => a + b, 0), best: [...x.pts].sort((a, b) => b - a).slice(0, season.best_of).reduce((a, b) => a + b, 0) })).sort((a, b) => b.best - a.best || b.total - a.total);
+      const byT = new Map();
+      (tres || []).forEach(r => { const x = byT.get(r.team_id) || { id: r.team_id, total: 0, match: 0, players: 0 }; x.total += +r.total; x.match += +r.match_points; x.players += +r.player_points; byT.set(r.team_id, x); });
+      const tl = [...byT.values()].sort((a, b) => b.total - a.total);
+      const f1 = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+      const pos = (arr, val) => arr.map((r, i) => { let p = i; while (p > 0 && val(arr[p - 1]) === val(r)) p--; return (arr.filter(x => val(x) === val(r)).length > 1 ? "T" : "") + (p + 1); });
+      const myTeam = teams.find(t => (t.team_players || []).some(tp => tp.player_id === me));
+      const tp = pos(tl, r => r.total);
+      $("teamStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Team</th><th>Total</th><th>Match</th><th>Golfer pts</th></tr></thead><tbody>` +
+        tl.map((r, i) => `<tr${myTeam && r.id === myTeam.id ? ' class="mine"' : ""}><td class="pos">${tp[i]}</td><td class="l"><b>${esc(teamById.get(r.id)?.name || "")}</b></td><td class="big">${f1(r.total)}</td><td>${f1(r.match)}</td><td>${f1(r.players)}</td></tr>`).join("") + "</tbody>";
+      let showAll = false;
+      const pp = pos(pl, r => r.best);
+      const draw = () => {
+        const list = showAll ? pl : pl.slice(0, 10);
+        $("playerStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Player</th><th>Played</th><th>Total</th><th>Best ${season.best_of}</th></tr></thead><tbody>` +
+          list.map((r, i) => `<tr${r.id === me ? ' class="mine"' : ""}><td class="pos">${pp[i]}</td><td class="l"><b>${esc(r.name)}</b></td><td>${r.played}</td><td>${f1(r.total)}</td><td class="big">${f1(r.best)}</td></tr>`).join("") + "</tbody>";
+        $("moreP").hidden = pl.length <= 10; $("moreP").textContent = showAll ? "Show top 10" : `Show all ${pl.length}`;
+      };
+      $("moreP").onclick = () => { showAll = !showAll; draw(); };
+      draw();
     }
 
     $("grpPick").onchange = () => { pickedMatch = +$("grpPick").value; refreshScores(false); };
