@@ -56,6 +56,9 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
 .signin label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .pill { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); }
 .pill.warn { background: #fff3cd; color: #6b5200; }
+.grip { cursor: grab; touch-action: none; user-select: none; font-size: 20px; color: var(--muted); padding: 4px 6px; display: inline-block; }
+tr.dragging { background: var(--green-soft); }
+.btn.mv { padding: 5px 9px; }
 #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; }
 </style>
 </head>
@@ -92,6 +95,8 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       <button type="button" data-tab="teesheet">Tee sheet</button>
       <button type="button" data-tab="courses">Courses</button>
       <button type="button" data-tab="season">Season rules</button>
+      <button type="button" data-tab="seasons">Seasons</button>
+      <label class="row" style="gap:6px;margin-left:auto;font-weight:600">Season <select id="seasonPick"></select></label>
     </nav>
 
     <section class="card" data-panel="players">
@@ -130,20 +135,23 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       <div class="row" style="margin-bottom:12px">
         <label for="tsEvent" style="font-weight:600">Week</label>
         <select id="tsEvent"></select>
-        <button class="btn secondary" type="button" id="tsCopy">Copy tee times from the week before</button>
+        <button class="btn secondary" type="button" id="tsCopy">Copy matchups from the week before</button>
       </div>
+      <p class="note">Tee times stay put. Drag a matchup by its handle (or use the arrows) to move it to another tee time.</p>
       <div class="scroll"><table id="teeTable"></table></div>
-      <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addMatch">Add a tee time</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn secondary" type="button" id="addMatch">Add a matchup</button></div>
     </section>
 
     <section class="card" data-panel="teesheet" hidden>
-      <h2>Build the season</h2>
-      <p class="note">Fills every week that isn't final. Each team plays every other team once in the first half and again in the second half, so a rematch is half a season away. Tee times rotate each week so no team always goes first or last. You can still change any week by hand afterwards.</p>
-      <div class="row">
+      <h2>Tee times and season build</h2>
+      <p class="note">The league's tee times are the same every week: the first time, then one every few minutes. Changing them here updates every week that isn't final.</p>
+      <div class="row" style="margin-bottom:14px">
         <label for="bFirst" style="font-weight:600">First tee time</label><input type="time" id="bFirst" value="17:00">
         <label for="bGap" style="font-weight:600">Minutes apart</label><input class="w-num" type="number" id="bGap" value="8" min="1">
-        <button class="btn" type="button" id="buildSeason">Build the season</button>
+        <span class="note" id="slotList" style="margin:0"></span>
       </div>
+      <p class="note">"Build the season" fills every week that isn't final. Each team plays every other team once in the first half and again in the second half, so a rematch is half a season away. Teams rotate through the tee times so no team always goes first or last. You can still drag matchups in any week afterwards.</p>
+      <button class="btn" type="button" id="buildSeason">Build the season</button>
       <div id="buildOut" style="margin-top:12px"></div>
     </section>
 
@@ -151,6 +159,22 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       <h2>Courses</h2>
       <p class="note">Rating, slope and par per tee for each nine. These drive handicaps.</p>
       <div class="scroll"><table id="teesTable"></table></div>
+    </section>
+
+    <section class="card" data-panel="seasons" hidden>
+      <h2>Seasons</h2>
+      <p class="note">Each season keeps its own teams, schedule, tee sheets and results. Players and their rounds carry over, so handicaps continue from one season to the next. The app shows the current season.</p>
+      <div class="scroll"><table id="seasonsTable"></table></div>
+      <h3 style="margin:18px 0 8px;font-size:15px">Start a new season</h3>
+      <form id="newSeason" style="display:grid;gap:10px;max-width:560px">
+        <div class="row"><label style="font-weight:600;width:150px" for="nsName">Name</label><input id="nsName" required style="width:200px"></div>
+        <div class="row"><label style="font-weight:600;width:150px" for="nsStart">Week 1 date</label><input id="nsStart" type="date" required></div>
+        <div class="row"><label style="font-weight:600;width:150px" for="nsWeeks">Number of weeks</label><input id="nsWeeks" class="w-num" type="number" min="1" max="40" value="18" required></div>
+        <div class="row"><label style="font-weight:600;width:150px" for="nsNine">Week 1 nine</label><select id="nsNine"></select><span class="note" style="margin:0">then alternates each week</span></div>
+        <div class="row"><label style="font-weight:600;width:150px" for="nsFrom">Copy teams and rules from</label><select id="nsFrom"></select></div>
+        <label class="row" style="gap:6px"><input type="checkbox" id="nsCurrent" checked> Make it the current season (the app switches to it)</label>
+        <div><button class="btn" type="submit">Create season</button></div>
+      </form>
     </section>
 
     <section class="card" data-panel="season" hidden>
@@ -212,14 +236,21 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
   });
 
   // ---------- data ----------
-  let season, players = [], teams = [], members = [], events = [], courses = [], tees = [];
-  async function loadAll() {
-    ({ data: season } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle());
-    [{ data: players }, { data: courses }, { data: tees }] = await Promise.all([
+  let season, seasons = [], hcps = new Map(), players = [], teams = [], members = [], events = [], courses = [], tees = [];
+  async function loadAll(pick) {
+    let hc;
+    [{ data: seasons }, { data: players }, { data: courses }, { data: tees }, { data: hc }] = await Promise.all([
+      sb.from("seasons").select("*").order("year", { ascending: false }).order("id", { ascending: false }),
       sb.from("players").select("*").order("last_name").order("first_name"),
       sb.from("courses").select("*").order("id"),
-      sb.from("tees").select("*").order("course_id").order("id")
+      sb.from("tees").select("*").order("course_id").order("id"),
+      sb.from("player_handicaps").select("*")
     ]);
+    seasons = seasons || []; hcps = new Map((hc || []).map(h => [h.player_id, h]));
+    const want = pick ?? season?.id;
+    season = seasons.find(x => x.id === want) || seasons.find(x => x.is_current) || seasons[0];
+    $("seasonPick").innerHTML = seasons.map(x => `<option value="${x.id}"${x === season ? " selected" : ""}>${esc(x.name)}${x.is_current ? " (current)" : ""}</option>`).join("");
+    teams = []; events = []; members = [];
     if (season) {
       $("seasonName").textContent = season.name;
       [{ data: teams }, { data: events }] = await Promise.all([
@@ -229,8 +260,9 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       const ids = teams.map(t => t.id);
       ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
     }
-    renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason();
+    renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots();
   }
+  $("seasonPick").onchange = () => loadAll(+$("seasonPick").value);
   const teamOf = pid => { const m = members.find(m => m.player_id === pid); return m && teams.find(t => t.id === m.team_id); };
   const pname = p => `${p.last_name}, ${p.first_name}`;
 
@@ -238,11 +270,12 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
   function renderPlayers() {
     const f = $("pFilter").value.trim().toLowerCase(), showOff = $("pShowInactive").checked;
     const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f)));
-    $("playersTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Team</th><th>Tee</th><th>Admin</th><th>Active</th><th>Signed in</th></tr></thead><tbody>` +
+    $("playersTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Team</th><th title="Pre-handicap from the player's recent rounds, all seasons">Hcp</th><th>Tee</th><th>Admin</th><th>Active</th><th>Signed in</th></tr></thead><tbody>` +
       list.map(p => { const t = teamOf(p.id); return `<tr data-id="${p.id}">
         <td><b>${esc(pname(p))}</b></td>
         <td><input class="w-email" type="email" data-f="email" value="${esc(p.email)}" placeholder="add email"></td>
         <td>${t ? `#${t.number} ${esc(t.name)}` : '<span class="note">Sub</span>'}</td>
+        <td>${hcps.has(p.id) ? `<b>${(+hcps.get(p.id).pre_handicap).toFixed(1)}</b> <span class="note" title="rounds used of rounds counted">${hcps.get(p.id).rounds_used}/${hcps.get(p.id).rounds_available}</span>` : '<span class="note">—</span>'}</td>
         <td><select data-f="default_tee">${["Blue","White","Gold"].map(x => `<option${x === p.default_tee ? " selected" : ""}>${x}</option>`).join("")}</select></td>
         <td><input type="checkbox" data-f="is_admin"${p.is_admin ? " checked" : ""} aria-label="Admin"></td>
         <td><input type="checkbox" data-f="active"${p.active ? " checked" : ""} aria-label="Active"></td>
@@ -359,17 +392,26 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
     const { data } = await sb.from("matchups").select("*").eq("event_id", ev).order("tee_time");
     matches = data || []; renderMatches();
   }
+  const firstTee = () => (season?.first_tee || "17:00").slice(0, 5), teeGap = () => season?.tee_gap || 8;
+  const slotTime = i => hhmm(firstTee(), i * teeGap());
+  const fmtTime = t => { const [h, m] = t.split(":").map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, "0")}`; };
+  function renderSlots() {
+    $("bFirst").value = firstTee(); $("bGap").value = teeGap();
+    const n = Math.max(1, Math.floor(teams.length / 2));
+    $("slotList").textContent = "Tee times: " + Array.from({ length: n }, (_, i) => fmtTime(slotTime(i))).join(", ");
+  }
   function renderMatches() {
     const topt = sel => `<option value="">—</option>` + teams.map(t => `<option value="${t.id}"${t.id === sel ? " selected" : ""}>#${t.number} ${esc(t.name)}</option>`).join("");
-    $("teeTable").innerHTML = `<thead><tr><th>Tee time</th><th>Start hole</th><th>Team</th><th></th><th>Team</th><th></th></tr></thead><tbody>` +
-      (matches.length ? matches.map(m => `<tr data-id="${m.id}">
-        <td><input type="time" data-f="tee_time" value="${m.tee_time.slice(0, 5)}"></td>
-        <td><input class="w-num" type="number" min="1" max="18" data-f="start_hole" value="${m.start_hole}"></td>
+    $("teeTable").innerHTML = `<thead><tr><th></th><th>Tee time</th><th>Team</th><th></th><th>Team</th><th>Move</th><th></th></tr></thead><tbody>` +
+      (matches.length ? matches.map((m, i) => `<tr data-id="${m.id}">
+        <td><span class="grip" data-grip aria-hidden="true" title="Drag to another tee time">⠿</span></td>
+        <td><b>${fmtTime(slotTime(i))}</b></td>
         <td><select data-f="team_a">${topt(m.team_a)}</select></td><td class="note">vs</td>
         <td><select data-f="team_b">${topt(m.team_b)}</select></td>
-        <td><button class="btn danger" type="button" data-del>Remove</button></td></tr>`).join("") : `<tr><td colspan="6" class="note">No tee times yet for this week.</td></tr>`) + `</tbody>`;
+        <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn secondary mv" type="button" data-mv="-1" aria-label="Move earlier"${i ? "" : " disabled"}>↑</button><button class="btn secondary mv" type="button" data-mv="1" aria-label="Move later"${i < matches.length - 1 ? "" : " disabled"}>↓</button></div></td>
+        <td><button class="btn danger" type="button" data-del>Remove</button></td></tr>`).join("") : `<tr><td colspan="7" class="note">No matchups yet for this week.</td></tr>`) + `</tbody>`;
     $("teeTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
-      const id = +el.closest("tr").dataset.id, f = el.dataset.f, v = f === "tee_time" ? el.value : +el.value;
+      const id = +el.closest("tr").dataset.id, f = el.dataset.f, v = +el.value;
       if (!v) return;
       const { error } = await sb.from("matchups").update({ [f]: v }).eq("id", id);
       if (check(error)) Object.assign(matches.find(m => m.id === id), { [f]: v });
@@ -377,15 +419,47 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
     $("teeTable").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
       const id = +b.closest("tr").dataset.id;
       const { error } = await sb.from("matchups").delete().eq("id", id);
-      if (check(error, "Removed")) { matches = matches.filter(m => m.id !== id); renderMatches(); }
+      if (check(error, "Removed")) { matches = matches.filter(m => m.id !== id); saveOrder(); }
     });
+    $("teeTable").querySelectorAll("[data-mv]").forEach(b => b.onclick = () => {
+      const i = matches.findIndex(m => m.id === +b.closest("tr").dataset.id), j = i + +b.dataset.mv;
+      [matches[i], matches[j]] = [matches[j], matches[i]]; saveOrder();
+    });
+    $("teeTable").querySelectorAll("[data-grip]").forEach(g => g.onpointerdown = startDrag);
+  }
+  // Drag a row by its grip; on drop, every matchup takes the tee time of the slot it landed in.
+  function startDrag(e) {
+    e.preventDefault();
+    const row = e.target.closest("tr"), body = row.parentElement;
+    row.classList.add("dragging");
+    const move = ev => {
+      const rows = [...body.children].filter(r => r !== row);
+      const after = rows.find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+      body.insertBefore(row, after || null);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      row.classList.remove("dragging");
+      const order = [...body.children].map(r => +r.dataset.id);
+      if (order.join() === matches.map(m => m.id).join()) return;
+      matches = order.map(id => matches.find(m => m.id === id)); saveOrder();
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  }
+  async function saveOrder() {
+    const changed = matches.map((m, i) => ({ m, t: slotTime(i) })).filter(({ m, t }) => m.tee_time.slice(0, 5) !== t);
+    renderMatches();
+    for (const { m, t } of changed) {
+      const { error } = await sb.from("matchups").update({ tee_time: t, start_hole: 1 }).eq("id", m.id);
+      if (!check(error, "")) return loadMatches();
+      m.tee_time = t + ":00";
+    }
+    if (changed.length) toast("Saved");
   }
   $("tsEvent").onchange = loadMatches;
   $("addMatch").onclick = async () => {
     if (teams.length < 2) return toast("Add teams first.", true);
-    const last = matches.at(-1);
-    let time = "17:00";
-    if (last) { const [h, m] = last.tee_time.split(":").map(Number); const t = h * 60 + m + 8; time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
+    const time = slotTime(matches.length);
     const used = new Set(matches.flatMap(m => [m.team_a, m.team_b]));
     const free = teams.filter(t => !used.has(t.id));
     const a = (free[0] || teams[0]).id, b = (free[1] || teams[1]).id;
@@ -424,7 +498,7 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
     if (teams.length < 2) return toast("Add the teams first (Teams tab).", true);
     const weeks = events.filter(e => e.status !== "final" && e.status !== "rained_out");
     if (!weeks.length) return toast("No open weeks to fill.", true);
-    const first = $("bFirst").value || "17:00", gap = +$("bGap").value || 8;
+    const first = firstTee(), gap = teeGap();
     const R = teams.length % 2 ? teams.length : teams.length - 1;
     const msg = `Fill tee sheets for ${weeks.length} weeks (weeks ${weeks[0].number} to ${weeks.at(-1).number})?\n\n` +
       (weeks.length < R * 2 ? `Note: ${teams.length} teams need ${R * 2} weeks for everyone to meet twice; you have ${weeks.length}, so some pairs meet only once.\n\n` : "") +
@@ -440,12 +514,31 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
     if (!check(error, `Built ${weeks.length} weeks`)) return;
     showGrid(rows); loadMatches();
   };
+  async function changeSlots() {
+    if (!season) return;
+    const first = $("bFirst").value, gap = +$("bGap").value;
+    if (!first || !(gap > 0)) return toast("Enter a time and minutes apart.", true);
+    const { error } = await sb.from("seasons").update({ first_tee: first, tee_gap: gap }).eq("id", season.id);
+    if (!check(error, "")) return renderSlots();
+    Object.assign(season, { first_tee: first, tee_gap: gap }); renderSlots();
+    const open = events.filter(e => e.status !== "final").map(e => e.id);
+    if (open.length) {
+      const { data: ms } = await sb.from("matchups").select("id,event_id,tee_time").in("event_id", open).order("tee_time").order("id");
+      const byEv = {}; (ms || []).forEach(m => (byEv[m.event_id] = byEv[m.event_id] || []).push(m));
+      for (const list of Object.values(byEv)) for (const [i, m] of list.entries()) {
+        const t = slotTime(i); if (m.tee_time.slice(0, 5) === t) continue;
+        const r = await sb.from("matchups").update({ tee_time: t }).eq("id", m.id); if (!check(r.error, "")) return;
+      }
+    }
+    toast("Tee times updated"); loadMatches();
+  }
+  $("bFirst").onchange = changeSlots; $("bGap").onchange = changeSlots;
   function showGrid(rows) {
     const byEv = new Map(); rows.forEach(r => (byEv.get(r.event_id) || byEv.set(r.event_id, []).get(r.event_id)).push(r));
     const tn = id => teams.find(t => t.id === id)?.number ?? "?";
     const meet = {}; rows.forEach(r => { const k = [tn(r.team_a), tn(r.team_b)].sort((x, y) => x - y).join("-"); meet[k] = (meet[k] || 0) + 1; });
     const counts = Object.values(meet), lo = Math.min(...counts), hi = Math.max(...counts);
-    $("buildOut").innerHTML = `<p class="note" style="margin:0 0 8px"><b>Check:</b> every pair of teams meets ${lo === hi ? lo + " times" : lo + " to " + hi + " times"}.</p><div class="scroll"><table><thead><tr><th>Wk</th><th>Date</th>${(byEv.values().next().value || []).map((r, i) => `<th>${r.tee_time.slice(0, 5)}</th>`).join("")}</tr></thead><tbody>` +
+    $("buildOut").innerHTML = `<p class="note" style="margin:0 0 8px"><b>Check:</b> every pair of teams meets ${lo === hi ? lo + " times" : lo + " to " + hi + " times"}.</p><div class="scroll"><table><thead><tr><th>Wk</th><th>Date</th>${(byEv.values().next().value || []).map((r, i) => `<th>${fmtTime(r.tee_time)}</th>`).join("")}</tr></thead><tbody>` +
       events.filter(e => byEv.has(e.id)).map(e => `<tr><td><b>${e.number}</b></td><td>${fmtDate(e.play_date)}</td>${byEv.get(e.id).map(r => `<td>${tn(r.team_a)} v ${tn(r.team_b)}</td>`).join("")}</tr>`).join("") + `</tbody></table></div>`;
   }
 
@@ -495,6 +588,53 @@ input.w-email { width: 230px; } input.w-name { width: 130px; } input.w-num { wid
       if (check(error)) season[k] = v;
     });
   }
+
+  // ---------- seasons ----------
+  function renderSeasons() {
+    $("seasonsTable").innerHTML = `<thead><tr><th>Season</th><th>Year</th><th></th></tr></thead><tbody>` +
+      seasons.map(x => `<tr data-id="${x.id}"><td><b>${esc(x.name)}</b></td><td>${x.year}</td>
+        <td>${x.is_current ? '<span class="pill">Current</span>' : `<button class="btn secondary" type="button" data-cur>Make current</button>`}</td></tr>`).join("") + `</tbody>`;
+    $("seasonsTable").querySelectorAll("[data-cur]").forEach(b => b.onclick = async () => {
+      const x = seasons.find(s => s.id === +b.closest("tr").dataset.id);
+      if (!confirm(`Make ${x.name} the current season? The app will show its schedule, teams and standings.`)) return;
+      if (await makeCurrent(x.id)) loadAll(x.id);
+    });
+    const latest = seasons[0], y = (latest?.year || new Date().getFullYear()) + 1;
+    if (!$("nsName").value) $("nsName").value = `BCC ${y}`;
+    if (!$("nsStart").value) { const d = new Date(y, 3, 1); while (d.getDay() !== 2) d.setDate(d.getDate() + 1); d.setDate(d.getDate() + 14); $("nsStart").value = d.toISOString().slice(0, 10); }
+    $("nsNine").innerHTML = courses.map(c => `<option value="${c.id}">${esc(c.name.replace("Avon Fields - ", ""))}</option>`).join("");
+    $("nsFrom").innerHTML = seasons.map(x => `<option value="${x.id}"${x.is_current ? " selected" : ""}>${esc(x.name)}</option>`).join("") + `<option value="">Nothing (rules default, no teams)</option>`;
+  }
+  async function makeCurrent(id) {
+    let r = await sb.from("seasons").update({ is_current: false }).neq("id", id);
+    if (!check(r.error, "")) return false;
+    r = await sb.from("seasons").update({ is_current: true }).eq("id", id);
+    return check(r.error, "Current season changed");
+  }
+  $("newSeason").onsubmit = async e => {
+    e.preventDefault();
+    const name = $("nsName").value.trim(), start = $("nsStart").value, weeks = +$("nsWeeks").value, from = seasons.find(x => x.id === +$("nsFrom").value);
+    if (seasons.some(x => x.name.toLowerCase() === name.toLowerCase())) return toast("There's already a season with that name.", true);
+    const rules = from ? Object.fromEntries(["ghost_net","points_table","team_win","team_tie","best_of","handicap_rounds","handicap_best","handicap_percent","first_tee","tee_gap"].filter(k => k in from).map(k => [k, from[k]])) : {};
+    const { data: ns, error } = await sb.from("seasons").insert({ name, year: +start.slice(0, 4), is_current: false, ...rules }).select().single();
+    if (!check(error, "")) return;
+    const nine0 = +$("nsNine").value, other = (courses.find(c => c.id !== nine0) || courses[0]).id;
+    let r = await sb.from("events").insert(Array.from({ length: weeks }, (_, i) => ({ season_id: ns.id, number: i + 1, play_date: addDays(start, 7 * i), course_id: i % 2 ? other : nine0 })));
+    if (!check(r.error, "")) return loadAll(ns.id);
+    if (from) {
+      const { data: ft } = await sb.from("teams").select("id,number,name").eq("season_id", from.id).order("number");
+      if (ft?.length) {
+        const { data: nt, error: te } = await sb.from("teams").insert(ft.map(t => ({ season_id: ns.id, number: t.number, name: t.name }))).select();
+        if (!check(te, "")) return loadAll(ns.id);
+        const { data: fm } = await sb.from("team_players").select("team_id,player_id").in("team_id", ft.map(t => t.id));
+        const map = new Map(ft.map(t => [t.id, nt.find(n => n.number === t.number).id]));
+        if (fm?.length) { r = await sb.from("team_players").insert(fm.map(m => ({ team_id: map.get(m.team_id), player_id: m.player_id }))); if (!check(r.error, "")) return loadAll(ns.id); }
+      }
+    }
+    if ($("nsCurrent").checked) await makeCurrent(ns.id);
+    toast(`${name} created`); $("nsName").value = ""; $("nsStart").value = "";
+    loadAll(ns.id);
+  };
 
   start();
 })();
