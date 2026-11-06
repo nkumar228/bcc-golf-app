@@ -22,7 +22,7 @@
       sb().from("cup_sides").select("*").eq("cup_id", cup.id).order("sort").order("id"),
       sb().from("cup_players").select("*").eq("cup_id", cup.id),
       sb().from("cup_rounds").select("*").eq("cup_id", cup.id).order("number"),
-      sb().from("players").select("id,first_name,last_name,default_tee"),
+      sb().from("players").select("id,first_name,last_name,default_tee,active"),
       sb().from("tees").select("course_id,name,rating,slope,par,tee_holes(hole,par,yards,stroke_index)")
     ]);
     const rids = (rounds || []).map(r => r.id);
@@ -31,7 +31,7 @@
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
     D = { cup, sides: sides || [], cp: cp || [], rounds: rounds || [], players: new Map((pl || []).map(p => [p.id, p])), entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], tbc, me: s.playerId };
     D.mySide = D.cp.find(c => c.player_id === D.me)?.side_id ?? null;
-    D.captainOf = D.sides.find(x => x.captain_id === D.me)?.id ?? null;
+    D.captainOf = D.cp.find(c => c.player_id === D.me && c.is_captain && c.side_id)?.side_id ?? null;
     on(); render();
   }
   function off() {
@@ -46,7 +46,7 @@
     const t = document.querySelector('.tabs a[data-tab="rounds"], .tabs a[data-tab="cup"]');
     if (t) { t.href = "#cup"; t.dataset.tab = "cup"; t.lastChild.textContent = "Cup"; if (location.hash === "#cup") t.setAttribute("aria-current", "page"); }
     $("cupHome").hidden = false;
-    if (!timer) timer = setInterval(() => { if (document.visibilityState === "visible" && (location.hash === "#cup" || location.hash === "" || location.hash === "#home") && !busy && !document.activeElement?.matches?.("#v-cup input, #v-cup select")) load(); }, 20000);
+    if (!timer) timer = setInterval(() => { if (document.visibilityState === "visible" && (location.hash === "#cup" || location.hash === "#captain" || location.hash === "" || location.hash === "#home") && !busy && !document.activeElement?.matches?.("#v-cup input, #v-cup select, #v-captain select")) load(); }, 20000);
   }
 
   // ---------- matches ----------
@@ -85,7 +85,9 @@
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
     $("cupMine").innerHTML = myRound ? scorer(myRound) : "";
-    $("cupCaptain").innerHTML = D.captainOf ? captainPanel() : "";
+    document.body.classList.toggle("is-captain", !!D.captainOf);
+    $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
+    $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
     $("cupRounds").innerHTML = all.map(({ r, ms }) => roundCard(r, ms)).join("");
     wire();
   }
@@ -128,49 +130,83 @@
   }
 
   // ---------- captain ----------
-  function captainPanel() {
-    const mine = D.captainOf, other = D.sides.find(s => s.id !== mine);
+  const pairsOf = r => (F[r.format] || F.singles).pairs;
+  const matchCount = r => r.matches || Math.max(1, Math.ceil(Math.max(0, ...D.sides.map(s => D.cp.filter(c => c.side_id === s.id).length)) / (pairsOf(r) ? 2 : 1)));
+  const entryOf = (r, sid, slot) => D.entries.find(e => e.round_id === r.id && e.side_id === sid && e.slot === slot && e.player_id);
+  // Back and forth: match 1 the first side throws out and the other answers; match 2 the other side throws out; and so on.
+  function turnOf(r) {
+    if (r.blind || !r.first_side_id || !r.format) return null;
+    const a = r.first_side_id, b = D.sides.find(s => s.id !== a)?.id, n = matchCount(r);
+    for (let i = 1; i <= n; i++) {
+      const thrower = i % 2 ? a : b, answerer = i % 2 ? b : a;
+      if (!entryOf(r, thrower, i)) return { side: thrower, slot: i, throwing: true };
+      if (!entryOf(r, answerer, i)) return { side: answerer, slot: i, throwing: false };
+    }
+    return { done: true };
+  }
+  const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") : "";
+  const idxOf = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
+  function pickOptions(r, sel, mine) {
+    const used = new Set(D.entries.filter(e => e.round_id === r.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
+    const ok = p => !used.has(p.id) || p.id === sel;
+    const roster = D.cp.filter(c => c.side_id === mine).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const o = p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.last_name)}, ${esc(p.first_name)}${idxOf(p.id)}</option>`;
+    return `<option value="">–</option>` + roster.map(o).join("") + (subs.length ? `<optgroup label="Subs (only to even up the sides)">${subs.map(o).join("")}</optgroup>` : "");
+  }
+
+  function captainPage() {
+    const mine = D.captainOf, ms = side(mine), other = D.sides.find(s => s.id !== mine);
+    const myPlayers = D.cp.filter(c => c.side_id === mine).map(c => ({ c, p: P(c.player_id) })).filter(x => x.p).sort((a, b) => a.p.last_name.localeCompare(b.p.last_name));
+    const otherIds = new Set(D.cp.filter(c => c.side_id && c.side_id !== mine).map(c => c.player_id));
+    const addable = [...D.players.values()].filter(p => p.active !== false && !otherIds.has(p.id) && !myPlayers.some(x => x.p.id === p.id)).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const roster = `<div class="card pad"><div class="head"><p class="label">${dot(ms)}${esc(ms.name)} · your side</p><span class="updated">${myPlayers.length} players</span></div>
+      <ul class="croster">${myPlayers.map(({ c, p }) => `<li><span>${esc(p.last_name)}, ${esc(p.first_name)}${c.is_captain ? ' <small class="pill">Captain</small>' : ""}</span><span class="updated">${c.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</span>${c.is_captain ? "<span></span>" : `<button class="linkbtn" type="button" data-drop="${p.id}" aria-label="Take ${esc(p.last_name)} off your side">Remove</button>`}</li>`).join("")}</ul>
+      <div class="crow2"><select id="capAdd" style="flex:1 1 200px"><option value="">Add a player…</option>${addable.map(p => `<option value="${p.id}">${esc(p.last_name)}, ${esc(p.first_name)}${D.cp.some(c => c.player_id === p.id) ? " · sub" : ""}</option>`).join("")}</select><button class="btn small" type="button" id="capAddBtn">Add</button></div>
+      <p class="updated" style="margin:6px 0 0">You only see your own side here. ${esc(other?.name || "")}'s captain builds theirs.</p></div>`;
     const open = D.rounds.filter(r => r.status === "setup" || r.status === "lineups");
-    if (!open.length) return "";
-    return `<div class="card pad"><div class="head"><p class="label">Captain · ${esc(sideName(mine))}</p></div>${open.map(r => {
-      const subs = D.subs.filter(s => s.round_id === r.id), subd = id => subs.some(s => s.side_id === id);
-      const anySub = subs.length > 0, f = F[r.format] || null;
-      const parts = [];
-      // format
-      if (r.format_side_id === mine && !anySub) parts.push(`<label class="crow"><span>Format</span><select data-fmt="${r.id}"><option value="">Pick one</option>${Object.entries(F).filter(([k]) => r.allow_blind ? k === "singles" : true).map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select></label>${f ? `<p class="updated">${esc(f.how)}</p>` : ""}`);
-      else parts.push(`<p class="updated">Format: <b>${f ? f.label : "not picked yet"}</b>${!f && r.format_side_id ? ` (${esc(sideName(r.format_side_id))} picks)` : ""}</p>`);
-      // order
-      if (r.order_side_id === mine && !anySub) parts.push(`<label class="crow"><span>Lineups</span><select data-ord="${r.id}"><option value="">Pick one</option><option value="${mine}"${r.first_side_id === mine ? " selected" : ""}>We submit first</option><option value="${other.id}"${r.first_side_id === other.id ? " selected" : ""}>We respond</option>${r.allow_blind ? `<option value="blind"${r.blind ? " selected" : ""}>Blind draw (both rank players)</option>` : ""}</select></label>`);
-      else parts.push(`<p class="updated">${r.blind ? "Blind draw: rank your players 1 to " + countMine() + "; matches go by position." : r.first_side_id ? `${esc(sideName(r.first_side_id))} submits first, then ${esc(sideName(D.sides.find(s => s.id !== r.first_side_id).id))} responds.` : `Who goes first: not picked yet${r.order_side_id ? ` (${esc(sideName(r.order_side_id))} picks)` : ""}.`}</p>`);
-      // lineup
-      if (r.status === "setup") parts.push(`<p class="updated">Lineups open when the commissioner opens this round.</p>`);
-      else if (subd(mine)) parts.push(`<p class="updated"><b>Your lineup is in.</b> ${subd(other.id) ? "Both are in; waiting for the reveal." : `Waiting on ${esc(other.name)}.`}</p>${lineupList(r, mine)}`);
-      else if (!r.format) parts.push(`<p class="updated">Waiting for the format.</p>`);
-      else if (!r.blind && !r.first_side_id) parts.push(`<p class="updated">Waiting for who goes first.</p>`);
-      else if (!r.blind && r.first_side_id !== mine && !subd(r.first_side_id)) parts.push(`<p class="updated">Waiting for ${esc(sideName(r.first_side_id))}'s lineup. You'll see it here when it's in.</p>`);
-      else parts.push(editor(r, mine));
-      return `<div class="cround"><b>${esc(r.name)}</b> <span class="updated">${esc(roundLine(r))}</span>${parts.join("")}</div>`;
-    }).join("")}</div>`;
+    return roster + open.map(r => roundForCaptain(r, mine, other)).join("");
   }
-  const countMine = () => D.cp.filter(c => c.side_id === D.captainOf).length;
-  function lineupList(r, sid) {
-    const f = F[r.format] || F.singles, es = D.entries.filter(e => e.round_id === r.id && e.side_id === sid).sort((a, b) => a.slot - b.slot);
-    return `<ol class="clist">${es.map(e => `<li>${[e.player_id, f.pairs ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ")}</li>`).join("")}</ol>`;
+  function roundForCaptain(r, mine, other) {
+    const f = F[r.format] || null, started = D.entries.some(e => e.round_id === r.id) || D.subs.some(s => s.round_id === r.id);
+    const parts = [];
+    if (r.format_side_id === mine && !started) parts.push(`<label class="crow"><span>Format</span><select data-fmt="${r.id}"><option value="">Pick one</option>${Object.entries(F).filter(([k]) => r.allow_blind ? k === "singles" : k !== "singles").map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select></label>${f ? `<p class="updated">${esc(f.how)}</p>` : ""}`);
+    else parts.push(`<p class="updated">Format: <b>${f ? f.label : "not picked yet"}</b>${!f && r.format_side_id ? ` (${esc(sideName(r.format_side_id))} picks)` : ""}</p>`);
+    const ordVal = r.blind ? "blind" : r.first_side_id ?? "";
+    if (r.order_side_id === mine && !started) parts.push(`<label class="crow"><span>Order</span><select data-ord="${r.id}"><option value="">Pick one</option>${D.sides.map(s => `<option value="${s.id}"${String(ordVal) === String(s.id) ? " selected" : ""}>${esc(s.name)} goes first</option>`).join("")}<option value="blind"${r.blind ? " selected" : ""}>Blind</option></select></label>`);
+    else parts.push(`<p class="updated">Order: <b>${r.blind ? "Blind" : r.first_side_id ? esc(sideName(r.first_side_id)) + " goes first" : "not picked yet"}</b>${!r.blind && !r.first_side_id && r.order_side_id ? ` (${esc(sideName(r.order_side_id))} picks)` : ""}</p>`);
+    if (r.status === "setup") parts.push(`<p class="updated">Lineups open when the commissioner opens this round.</p>`);
+    else if (!r.format) parts.push(`<p class="updated">Waiting for the format.</p>`);
+    else if (!r.blind && !r.first_side_id) parts.push(`<p class="updated">Waiting for the order.</p>`);
+    else if (r.blind) parts.push(blindEditor(r, mine, other));
+    else parts.push(backAndForth(r, mine, other));
+    return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "lineups" ? "Lineups open" : "Not open yet"}</span></div><div class="updated">${esc(roundLine(r))}</div><div style="display:grid;gap:6px;margin-top:8px">${parts.join("")}</div></div>`;
   }
-  function editor(r, mine) {
-    const f = F[r.format] || F.singles, other = D.sides.find(s => s.id !== mine);
-    const roster = D.cp.filter(c => c.side_id === mine).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => a.last_name.localeCompare(b.last_name));
+  function backAndForth(r, mine, other) {
+    const t = turnOf(r), n = matchCount(r), a = r.first_side_id, pairs = pairsOf(r), unit = pairs ? "team" : "player";
+    const rows = Array.from({ length: n }, (_, k) => { const i = k + 1, thrower = i % 2 ? a : D.sides.find(s => s.id !== a).id, answerer = D.sides.find(s => s.id !== thrower).id;
+      const te = entryOf(r, thrower, i), ae = entryOf(r, answerer, i);
+      return `<li class="${t && t.slot === i ? "now" : ""}"><span style="--c:${esc(side(thrower).color)}">${te ? names(r, te) : "…"}</span><em>vs</em><span class="r" style="--c:${esc(side(answerer).color)}">${ae ? names(r, ae) : "…"}</span><small>${esc(sideName(thrower))} throws out</small></li>`; }).join("");
+    const last = D.entries.filter(e => e.round_id === r.id).sort((x, y) => y.id - x.id)[0];
+    let action;
+    if (t.done) action = `<p class="updated"><b>Every match is set.</b> Waiting for the commissioner to reveal them.</p>`;
+    else if (t.side !== mine) action = `<p class="updated">Waiting for ${esc(sideName(t.side))} to ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}`}.</p>`;
+    else {
+      const vs = t.throwing ? "" : ` against ${names(r, entryOf(r, D.sides.find(s => s.id !== mine).id, t.slot))}`;
+      action = `<div class="cpick" data-round="${r.id}"><p style="margin:0"><b>Your turn:</b> ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}${vs}`}.</p>
+        <div class="crow2"><select data-pp="player">${pickOptions(r, null, mine)}</select>${pairs ? `<select data-pp="partner">${pickOptions(r, null, mine)}</select>` : ""}</div>
+        <button class="btn small" type="button" data-place="${r.id}" style="margin-top:8px">${t.throwing ? "Throw out" : "Send"}</button></div>`;
+    }
+    const undo = last && last.side_id === mine && r.status === "lineups" ? `<button class="linkbtn" type="button" data-undo="${r.id}">Take back my last pick</button>` : "";
+    return `<p class="updated">Back and forth: one ${unit} at a time. Each pick shows up for both captains right away; everyone else sees the matches when they're revealed.</p><ol class="cbf">${rows}</ol>${action}${undo}<p class="si-err" id="cupErr${r.id}"></p>`;
+  }
+  function blindEditor(r, mine) {
+    const pairs = pairsOf(r), submitted = D.subs.some(s => s.round_id === r.id && s.side_id === mine), n = matchCount(r);
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === mine);
-    const theirs = D.entries.filter(e => e.round_id === r.id && e.side_id === other.id).sort((a, b) => a.slot - b.slot);
-    const n = Math.max(f.pairs ? Math.ceil(roster.length / 2) : roster.length, theirs.length ? Math.max(...theirs.map(e => e.slot)) : 0, ...es.map(e => e.slot), 1);
-    const idx = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
-    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => a.last_name.localeCompare(b.last_name));
-    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.last_name)}${idx(p.id)}</option>`;
-    const opt = sel => `<option value="">–</option>` + roster.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs (only to even up the sides)">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
-    const vs = slot => { const t = theirs.find(e => e.slot === slot); return t ? `<span class="cvs">vs ${[t.player_id, f.pairs ? t.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ")}</span>` : ""; };
-    return `<p class="updated">${r.blind ? "Rank your players. Nobody sees this until the reveal." : theirs.length ? `${esc(other.name)}'s lineup is in. Set yours against each match.` : "Set your lineup in match order. The other captain sees it only after you submit."}</p>
-      <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${i + 1}</b><select data-e="player_id">${opt(e?.player_id)}</select>${f.pairs ? `<select data-e="partner_id">${opt(e?.partner_id)}</select>` : ""}${vs(i + 1)}</div>`; }).join("")}
-      <button class="btn small" type="button" data-submit="${r.id}" style="margin-top:10px">Submit lineup</button><p class="si-err" id="cupErr${r.id}"></p></div>`;
+    if (submitted) return `<p class="updated"><b>Your picks are in.</b> They stay hidden until the commissioner reveals the round.</p><ol class="clist">${es.sort((a, b) => a.slot - b.slot).map(e => `<li>${names(r, e)}</li>`).join("")}</ol>`;
+    return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
+      <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${pairs ? "Team " : ""}${i + 1}</b><select data-e="player_id">${pickOptions(r, e?.player_id, mine)}</select>${pairs ? `<select data-e="partner_id">${pickOptions(r, e?.partner_id, mine)}</select>` : ""}</div>`; }).join("")}
+      <button class="btn small" type="button" data-submit="${r.id}" style="margin-top:10px">Submit picks</button><p class="si-err" id="cupErr${r.id}"></p></div>`;
   }
 
   // ---------- events ----------
@@ -186,6 +222,17 @@
       const { error } = await sb().rpc("cup_set_order", { p_round: +el.dataset.ord, p_first_side: blind ? null : +el.value, p_blind: blind }); busy = false;
       if (error) alert(error.message); load();
     });
+    const rpc = async (fn, args, errId) => { busy = true; const { error } = await sb().rpc(fn, args); busy = false; if (error) { if (errId && $(errId)) $(errId).textContent = error.message; else alert(error.message); return false; } await load(); return true; };
+    if ($("capAddBtn")) $("capAddBtn").onclick = () => { const v = +$("capAdd").value; if (v) rpc("cup_set_member", { p_cup: D.cup.id, p_player: v, p_join: true }); };
+    document.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { if (confirm("Take this player off your side? They go back to the sub pool.")) rpc("cup_set_member", { p_cup: D.cup.id, p_player: +b.dataset.drop, p_join: false }); });
+    document.querySelectorAll("[data-place]").forEach(b => b.onclick = () => {
+      const rid = +b.dataset.place, box = b.closest(".cpick"), pl = +box.querySelector('[data-pp="player"]').value || null, pt = box.querySelector('[data-pp="partner"]') ? (+box.querySelector('[data-pp="partner"]').value || null) : null;
+      const r = D.rounds.find(x => x.id === rid);
+      if (!pl || (pairsOf(r) && !pt)) { $("cupErr" + rid).textContent = pairsOf(r) ? "Pick both players." : "Pick a player."; return; }
+      if (pl === pt) { $("cupErr" + rid).textContent = "Pick two different players."; return; }
+      rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid);
+    });
+    document.querySelectorAll("[data-undo]").forEach(b => b.onclick = () => rpc("cup_undo", { p_round: +b.dataset.undo, p_side: D.captainOf }, "cupErr" + b.dataset.undo));
     document.querySelectorAll(".cedit").forEach(box => {
       const rid = +box.dataset.round, sid = D.captainOf;
       box.querySelectorAll("[data-e]").forEach(el => el.onchange = async () => {
@@ -205,7 +252,7 @@
       const ids = es.flatMap(e => [e.player_id, f.pairs ? e.partner_id : null]).filter(Boolean);
       if (new Set(ids).size !== ids.length) { $("cupErr" + rid).textContent = "Someone is in the lineup twice."; return; }
       if (!es.length) { $("cupErr" + rid).textContent = "The lineup is empty."; return; }
-      if (!confirm(`Submit ${es.length} ${f.pairs ? "pairs" : "players"}? You can't change it after this unless the commissioner unlocks it.`)) return;
+      if (!confirm(`Submit ${es.length} ${f.pairs ? "teams" : "players"}? You can't change them after this unless the commissioner unlocks it.`)) return;
       busy = true; const { error } = await sb().rpc("cup_submit", { p_round: rid, p_side: D.captainOf }); busy = false;
       if (error) { $("cupErr" + rid).textContent = error.message; return; }
       load();
@@ -227,6 +274,6 @@
   }
 
   window.addEventListener("bcc-session", load);
-  window.addEventListener("hashchange", () => { if (location.hash === "#cup" && D) load(); });
+  window.addEventListener("hashchange", () => { if ((location.hash === "#cup" || location.hash === "#captain") && D) load(); });
   load();
 })();

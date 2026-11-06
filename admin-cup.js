@@ -107,17 +107,17 @@
         <label style="font-weight:600">Name</label><input id="cupName" value="${esc(cup.name)}" style="width:220px">
         <label style="font-weight:600">Defending side</label><select id="cupDef">${sideOpts(cup.defending_side_id, "Not set")}</select>
       </div>
-      <div class="scroll"><table><thead><tr><th>Side</th><th>Color</th><th>Captain</th><th>Players</th></tr></thead><tbody>
+      <div class="scroll"><table><thead><tr><th>Side</th><th>Color</th><th>Captains</th><th>Players</th></tr></thead><tbody>
         ${D.sides.map(s => `<tr data-side="${s.id}"><td><input data-sf="name" value="${esc(s.name)}" style="width:120px"></td><td><input data-sf="color" type="color" value="${esc(s.color)}" style="width:52px;padding:2px"></td>
-          <td><select data-sf="captain_id"><option value="">None</option>${D.cp.filter(c => c.side_id === s.id).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b))).map(p => `<option value="${p.id}"${p.id === s.captain_id ? " selected" : ""}>${esc(pname(p))}</option>`).join("")}</select></td>
+          <td>${D.cp.filter(c => c.side_id === s.id && c.is_captain).map(c => esc(P(c.player_id)?.last_name || "?")).join(", ") || '<span class="note" style="margin:0">Tick Captain below</span>'}</td>
           <td>${D.cp.filter(c => c.side_id === s.id).length}</td></tr>`).join("")}
       </tbody></table></div>
 
       <h3 style="margin:18px 0 8px;font-size:15px">Players</h3>
-      <p class="note">Sides stay the same for the whole Cup. Put new players on a side as they join. Subs don't take a side; anyone with at least two league rounds can be a sub, and either captain can put a sub in a lineup. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
+      <p class="note">Tick Captain to give a player the captain page in the app, where they add players to their side and set lineups. Sides stay the same for the whole Cup. Put new players on a side as they join. Subs don't take a side; anyone with at least two league rounds can be a sub, and either captain can put a sub in a lineup. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
       <div class="row" style="margin-bottom:8px">${D.rounds.some(r => r.status === "revealed" || r.status === "final") ? '<span class="pill">Handicaps locked: the first round has started</span>' : '<button class="btn secondary" type="button" id="cupRefresh">Refresh handicaps</button><span class="note" style="margin:0">Use this once the league season is final. It locks when the first round is revealed.</span>'}</div>
-      <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th class="num">League rounds</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
-        ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side><option value="">Not playing</option><option value="sub"${c && c.side_id == null ? " selected" : ""}${eligible(p.id) || (c && c.side_id == null) ? "" : " disabled"}>Sub</option>${D.sides.map(s => `<option value="${s.id}"${s.id === c?.side_id ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></td><td class="num">${A.hcps.get(p.id)?.rounds_available ?? 0}</td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
+      <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th>Captain</th><th class="num">League rounds</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
+        ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side><option value="">Not playing</option><option value="sub"${c && c.side_id == null ? " selected" : ""}${eligible(p.id) || (c && c.side_id == null) ? "" : " disabled"}>Sub</option>${D.sides.map(s => `<option value="${s.id}"${s.id === c?.side_id ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></td><td>${c?.side_id ? `<input type="checkbox" data-cap${c.is_captain ? " checked" : ""} aria-label="Captain">` : ""}</td><td class="num">${A.hcps.get(p.id)?.rounds_available ?? 0}</td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
       </tbody></table></div>
 
       <h3 style="margin:18px 0 8px;font-size:15px">Rounds</h3>
@@ -148,8 +148,9 @@
       <div class="row" style="margin-top:8px">
         <label>Format</label><select data-rf="format"${locked ? " disabled" : ""}><option value="">Not picked</option>${Object.entries(F).map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select>
         <label>picked by</label><select data-rf="format_side_id">${sideOpts(r.format_side_id, "Admin")}</select>
-        <label>Who goes first picked by</label><select data-rf="order_side_id">${sideOpts(r.order_side_id, "Admin")}</select>
-        <label>Goes first</label><select data-first${locked ? " disabled" : ""}><option value="">Not picked</option>${D.sides.map(s => `<option value="${s.id}"${String(firstVal) === String(s.id) ? " selected" : ""}>${esc(s.name)} submits first</option>`).join("")}${r.allow_blind ? `<option value="blind"${r.blind ? " selected" : ""}>Blind draw</option>` : ""}</select>
+        <label>Order picked by</label><select data-rf="order_side_id">${sideOpts(r.order_side_id, "Admin")}</select>
+        <label>Goes first</label><select data-first${locked ? " disabled" : ""}><option value="">Not picked</option>${D.sides.map(s => `<option value="${s.id}"${String(firstVal) === String(s.id) ? " selected" : ""}>${esc(s.name)} goes first</option>`).join("")}<option value="blind"${r.blind ? " selected" : ""}>Blind</option></select>
+        <label>Matches</label><input class="w-num" type="number" min="1" max="30" data-rf="matches" value="${r.matches ?? ""}" placeholder="auto" title="Leave blank to use the size of the bigger side">
       </div>
       ${f ? `<p class="note" style="margin:6px 0 0">${esc(f.how)}${f.w ? ` Team handicap ${f.w[0]} × lower + ${f.w[1]} × higher.` : ""}</p>` : ""}
       <div class="lu" style="margin-top:10px">${D.sides.map(s => lineupBox(r, s, done(s.id))).join("")}</div>
@@ -164,7 +165,7 @@
     const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
     const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
-    return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "ranking" : "lineup"} ${submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
+    return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "picks" : "lineup"} ${submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
       ${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="slot" data-slot="${i + 1}"><b style="width:22px">${i + 1}</b><select data-e="player_id"${locked ? " disabled" : ""}>${opt(e?.player_id)}</select>${f.pairs ? `<select data-e="partner_id"${locked ? " disabled" : ""}>${opt(e?.partner_id)}</select>` : ""}</div>`; }).join("")}
       ${submitted && !locked ? `<button class="btn secondary" type="button" data-unlock style="margin-top:8px">Unlock for the captain</button>` : ""}</div>`;
   }
@@ -198,6 +199,11 @@
         : await sb.from("cup_players").delete().eq("cup_id", cup.id).eq("player_id", pid);
       if (check(r.error)) loadCup();
     });
+    body.querySelectorAll("#cupPlayers [data-cap]").forEach(el => el.onchange = async () => {
+      const pid = +el.closest("tr").dataset.p;
+      const { error } = await sb.from("cup_players").update({ is_captain: el.checked }).eq("cup_id", cup.id).eq("player_id", pid);
+      if (check(error, el.checked ? "Captain tag added" : "Captain tag removed")) loadCup();
+    });
     if ($("cupRefresh")) $("cupRefresh").onclick = async () => {
       if (!confirm("Copy everyone's current league index into the Cup? Strokes in matches not yet finished will follow.")) return;
       const rows = D.cp.map(c => ({ cup_id: cup.id, player_id: c.player_id, side_id: c.side_id, handicap_index: A.hcps.get(c.player_id)?.handicap_index ?? c.handicap_index }));
@@ -212,7 +218,7 @@
       const r = D.rounds.find(x => x.id === +box.dataset.round);
       box.querySelectorAll("[data-rf]").forEach(el => el.onchange = async () => {
         const k = el.dataset.rf; let v = el.value || null;
-        if (["holes", "course_id", "course2_id", "format_side_id", "order_side_id"].includes(k)) v = v == null ? null : +v;
+        if (["holes", "course_id", "course2_id", "format_side_id", "order_side_id", "matches"].includes(k)) v = v == null ? null : +v;
         const { error } = await sb.from("cup_rounds").update({ [k]: v }).eq("id", r.id); if (check(error)) loadCup();
       });
       const first = box.querySelector("[data-first]");
