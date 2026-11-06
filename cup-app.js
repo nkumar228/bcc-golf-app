@@ -18,6 +18,12 @@
     const s = ses(); if (!s || !s.real || !sb()) return off();
     const { data: cups } = await sb().from("cups").select("*").eq("active", true).limit(1);
     const cup = cups && cups[0]; if (!cup) return off();
+    D = await fetchCup(cup, s.playerId);
+    D.mySide = D.cp.find(c => c.player_id === D.me)?.side_id ?? null;
+    D.captainOf = D.cp.find(c => c.player_id === D.me && c.is_captain && c.side_id)?.side_id ?? null;
+    on(); render();
+  }
+  async function fetchCup(cup, me) {
     const [{ data: sides }, { data: cp }, { data: rounds }, { data: pl }, { data: tees }] = await Promise.all([
       sb().from("cup_sides").select("*").eq("cup_id", cup.id).order("sort").order("id"),
       sb().from("cup_players").select("*").eq("cup_id", cup.id),
@@ -29,10 +35,38 @@
     const q = t => rids.length ? sb().from(t).select("*").in("round_id", rids) : Promise.resolve({ data: [] });
     const [{ data: entries }, { data: subs }, { data: ovr }, { data: scores }] = await Promise.all([q("cup_entries"), q("cup_submissions"), q("cup_match_overrides"), q("cup_scores")]);
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
-    D = { cup, sides: sides || [], cp: cp || [], rounds: rounds || [], players: new Map((pl || []).map(p => [p.id, p])), entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], tbc, me: s.playerId };
-    D.mySide = D.cp.find(c => c.player_id === D.me)?.side_id ?? null;
-    D.captainOf = D.cp.find(c => c.player_id === D.me && c.is_captain && c.side_id)?.side_id ?? null;
-    on(); render();
+    return { cup, sides: sides || [], cp: cp || [], rounds: rounds || [], players: new Map((pl || []).map(p => [p.id, p])), entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], tbc, me };
+  }
+
+  // ---------- Cup history (menu page) ----------
+  async function loadHistory() {
+    const body = $("histBody"), s = ses();
+    if (!s || !s.real || !sb()) { body.innerHTML = '<div class="card pad"><p class="updated" style="margin:0">Sign in to see the Cup history.</p></div>'; return; }
+    body.innerHTML = '<p class="updated">Loading…</p>';
+    const [{ data: hist }, { data: cups }] = await Promise.all([sb().from("cup_history").select("*").order("year", { ascending: false }), sb().from("cups").select("*").order("year", { ascending: false })]);
+    const rows = (hist || []).map(h => ({ year: h.year, a: h.side1_name, ap: h.side1_points, b: h.side2_name, bp: h.side2_points, winner: h.winner, notes: h.notes }));
+    // Cups played in the app count once every round is final (unless that year was entered by hand)
+    for (const c of cups || []) {
+      if (rows.some(r => r.year === c.year)) continue;
+      const data = await fetchCup(c, s.playerId);
+      if (!data.rounds.length || data.rounds.some(r => r.status !== "final") || data.sides.length < 2) continue;
+      const saved = D; D = data;
+      const t = Object.fromEntries(D.sides.map(x => [x.id, 0]));
+      D.rounds.forEach(r => matchesOf(r).forEach(m => D.sides.forEach(x => t[x.id] += m.pts.pts[x.id])));
+      const [A, B] = D.sides, holder = D.sides.find(x => x.id === c.defending_side_id);
+      rows.push({ year: c.year, a: A.name, ap: t[A.id], b: B.name, bp: t[B.id], winner: t[A.id] === t[B.id] && holder ? holder.name : null, notes: t[A.id] === t[B.id] && holder ? `Tied; ${holder.name} kept the Cup` : null });
+      D = saved;
+    }
+    rows.sort((x, y) => y.year - x.year);
+    const win = r => r.winner || (r.ap == null || r.bp == null ? null : +r.ap > +r.bp ? r.a : +r.bp > +r.ap ? r.b : null);
+    const tally = {}; let ties = 0;
+    rows.forEach(r => { const w = win(r); if (w) tally[w] = (tally[w] || 0) + 1; else if (r.ap != null && r.bp != null) ties++; [r.a, r.b].forEach(n => tally[n] = tally[n] || 0); });
+    const color = n => /orange/i.test(n) ? "#e8711c" : /blue/i.test(n) ? "#2f6fd6" : "var(--muted)";
+    const pts = v => v == null ? "–" : fmtPts(+v);
+    if (!rows.length) { body.innerHTML = '<div class="card pad"><p class="updated" style="margin:0">No Cup results yet. The commissioner can add past years on the admin site.</p></div>'; return; }
+    body.innerHTML = `<div class="card pad"><p class="label">All-time record</p><div class="cup-board">${Object.entries(tally).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([n, w]) => `<div class="cside" style="--c:${color(n)}"><span>${esc(n)}</span><b class="num">${w}</b><small>Cup${w === 1 ? "" : "s"} won</small></div>`).join("")}</div>
+      <p class="updated" style="margin:8px 0 0">${rows.length} Cup${rows.length === 1 ? "" : "s"} played${ties ? ` · ${ties} tied` : ""}.</p></div>
+      <div class="card pad"><p class="label">Year by year</p><div class="cmatches">${rows.map(r => { const w = win(r); return `<div class="cm"><span class="${w === r.a ? "lead" : ""}" style="--c:${color(r.a)}">${esc(r.a)} ${pts(r.ap)}</span><em><b>${r.year}</b>${r.notes ? "<br>" + esc(r.notes) : ""}</em><span class="r ${w === r.b ? "lead" : ""}" style="--c:${color(r.b)}">${pts(r.bp)} ${esc(r.b)}</span></div>`; }).join("")}</div></div>`;
   }
   function off() {
     D = null; document.body.classList.remove("cup-on");
@@ -300,7 +334,9 @@
     }));
   }
 
-  window.addEventListener("bcc-session", load);
+  window.addEventListener("bcc-session", () => { load(); if (location.hash === "#cup-history") loadHistory(); });
+  window.addEventListener("hashchange", () => { if (location.hash === "#cup-history") loadHistory(); });
+  if (location.hash === "#cup-history") loadHistory();
   window.addEventListener("hashchange", () => { if (["#cup", "#captain", "#score", "#home", ""].includes(location.hash) && D) load(); });
   load();
 })();

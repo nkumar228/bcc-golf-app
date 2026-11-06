@@ -463,6 +463,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <a href="#handicap">How my handicap is calculated</a>
     <a href="#captain" class="captain-only">Captain page</a>
     <a href="#rounds" class="cup-only">League rounds</a>
+    <a href="#cup-history">QCC Cup history</a>
     <a href="#rules">League rules</a>
     <a href="#skins-games">Skins winners</a>
     <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
@@ -671,6 +672,11 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   <section class="view" id="v-captain" aria-label="Captain page" hidden>
     <div class="head"><p class="label">Captain page</p><a class="linkbtn" href="#cup">Back to the Cup</a></div>
     <div id="capBody" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="view" id="v-cup-history" aria-label="Queen City Cup history" hidden>
+    <div class="head"><p class="label">Queen City Cup history</p></div>
+    <div id="histBody" style="display:grid;gap:12px"></div>
   </section>
 
   <section class="view" id="v-rules" aria-label="League rules" hidden>
@@ -1396,7 +1402,7 @@ the spirit, intent, and fairness of league competition.</p>
   loadMember();
 
   // Router: #home, #score, #gps
-  const views = { cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const views = { "cup-history": $("v-cup-history"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
   const menu = $("menu"), mb = $("menuBtn");
   const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
   mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };

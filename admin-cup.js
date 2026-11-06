@@ -259,5 +259,31 @@
     });
   }
 
-  A.onLoad = () => loadCups();
+  // ---------- history ----------
+  async function loadHistory() {
+    const { data } = await sb.from("cup_history").select("*").order("year", { ascending: false });
+    const rows = data || [];
+    $("histTable").innerHTML = `<thead><tr><th>Year</th><th>Side</th><th class="num">Pts</th><th>Side</th><th class="num">Pts</th><th>Winner</th><th>Notes</th><th></th></tr></thead><tbody>` +
+      (rows.map(h => `<tr data-id="${h.id}"><td><input class="w-num" type="number" data-h="year" value="${h.year}"></td>
+        <td><input data-h="side1_name" value="${esc(h.side1_name)}" style="width:90px"></td><td><input class="w-num" type="number" step="0.5" data-h="side1_points" value="${h.side1_points ?? ""}"></td>
+        <td><input data-h="side2_name" value="${esc(h.side2_name)}" style="width:90px"></td><td><input class="w-num" type="number" step="0.5" data-h="side2_points" value="${h.side2_points ?? ""}"></td>
+        <td><input data-h="winner" value="${esc(h.winner || "")}" placeholder="by points" style="width:100px"></td><td><input data-h="notes" value="${esc(h.notes || "")}" style="width:220px"></td>
+        <td><button class="btn danger" type="button" data-hdel>Delete</button></td></tr>`).join("") || '<tr><td colspan="8" class="note">No past years yet.</td></tr>') + "</tbody>";
+    $("histTable").querySelectorAll("[data-h]").forEach(el => el.onchange = async () => {
+      const k = el.dataset.h, v = ["year", "side1_points", "side2_points"].includes(k) ? (el.value === "" ? null : +el.value) : (el.value.trim() || null);
+      const { error } = await sb.from("cup_history").update({ [k]: v }).eq("id", +el.closest("tr").dataset.id); check(error);
+    });
+    $("histTable").querySelectorAll("[data-hdel]").forEach(b => b.onclick = async () => {
+      if (!confirm("Delete this year from the Cup history?")) return;
+      const { error } = await sb.from("cup_history").delete().eq("id", +b.closest("tr").dataset.id); if (check(error, "Deleted")) loadHistory();
+    });
+  }
+  $("histAdd").onclick = async () => {
+    const { data } = await sb.from("cup_history").select("year").order("year").limit(1);
+    const y = (data && data[0] ? data[0].year : new Date().getFullYear()) - 1;
+    const { error } = await sb.from("cup_history").insert({ year: y, side1_name: "Orange", side2_name: "Blue", side1_points: null, side2_points: null, winner: null, notes: null });
+    if (check(error, "Year added")) loadHistory();
+  };
+
+  A.onLoad = () => { loadCups(); loadHistory(); };
 })();
