@@ -27,7 +27,9 @@
   }
 
   // League formula; for 18 holes the 9-hole index is doubled (Nitin, 2026-11-06).
-  const courseHcp = (index, tee, holes) => r0((+index || 0) * (holes === 18 ? 2 : 1) * tee.slope / 113 + (tee.rating - tee.par));
+  // Unrounded, so a team blend rounds only once at the end (as the league spreadsheet does).
+  const courseHcpRaw = (index, tee, holes) => (+index || 0) * (holes === 18 ? 2 : 1) * tee.slope / 113 + (tee.rating - tee.par);
+  const courseHcp = (index, tee, holes) => r0(courseHcpRaw(index, tee, holes));
   const teamHcp = (chs, w) => { const s = [...chs].sort((a, b) => a - b); const lo = s[0], hi = s.length > 1 ? s[1] : s[0]; return r0(w[0] * lo + w[1] * hi); };
 
   // Strokes on a hole: hardest holes first, by stroke index ranked within the holes played.
@@ -43,10 +45,10 @@
     sides.forEach(sd => {
       const e = sd.entry; if (!e) return;
       const ids = [e.player_id, f.pairs ? e.partner_id : null].filter(Boolean);
-      const golfers = ids.map(pid => { const i = info(pid) || {}; const tee = teeFor(round, teesByCourse, i.tee); if (!holes && tee) holes = tee.holes; return { pid, name: i.name || "?", index: +i.index || 0, tee, ch: tee ? courseHcp(i.index, tee, round.holes) : 0 }; });
+      const golfers = ids.map(pid => { const i = info(pid) || {}; const tee = teeFor(round, teesByCourse, i.tee); if (!holes && tee) holes = tee.holes; const raw = tee ? courseHcpRaw(i.index, tee, round.holes) : 0; return { pid, name: i.name || "?", index: +i.index || 0, tee, raw, ch: r0(raw) }; });
       if (!golfers.length) return;
       if (f.ball === "one") {
-        const h = f.w ? teamHcp(golfers.map(g => g.ch), f.w) : golfers[0].ch;
+        const h = f.w ? teamHcp(golfers.map(g => g.raw), f.w) : golfers[0].ch;
         balls.push({ side: sd.id, key: golfers[0].pid, players: golfers.map(g => g.pid), label: golfers.map(g => g.name).join(" & "), golfers, hcp: h });
       } else golfers.forEach(g => balls.push({ side: sd.id, key: g.pid, players: [g.pid], label: g.name, golfers: [g], hcp: g.ch }));
     });
@@ -103,5 +105,5 @@
     return { pts, live, final: false };
   }
 
-  window.Cup = { FORMATS, teeFor, courseHcp, teamHcp, strokeRanks, strokesOn, setupMatch, matchStatus, points };
+  window.Cup = { FORMATS, teeFor, courseHcp, courseHcpRaw, teamHcp, strokeRanks, strokesOn, setupMatch, matchStatus, points };
 })();

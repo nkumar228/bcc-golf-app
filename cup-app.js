@@ -145,14 +145,15 @@
     return { done: true };
   }
   // Course handicap for this round's tees, and the team handicap the format gives a pair
-  const chOf = (r, pid) => { const p = P(pid), c = D.cp.find(x => x.player_id === pid), tee = C.teeFor(r, D.tbc, p?.default_tee || "Blue"); return tee ? C.courseHcp(c?.handicap_index ?? 0, tee, r.holes) : null; };
+  const chRaw = (r, pid) => { const p = P(pid), c = D.cp.find(x => x.player_id === pid), tee = C.teeFor(r, D.tbc, p?.default_tee || "Blue"); return tee ? C.courseHcpRaw(c?.handicap_index ?? 0, tee, r.holes) : null; };
+  const chOf = (r, pid) => { const v = chRaw(r, pid); return v == null ? null : Math.round(v + 1e-9); };
   function teamHcpText(r, a, b) {
     const f = F[r.format]; if (!f || !a) return "";
     const ids = [a, f.pairs ? b : null].filter(Boolean), chs = ids.map(id => chOf(r, id));
     if (chs.some(x => x == null)) return "set the course to see handicaps";
     if (!f.pairs) return `hcp ${chs[0]}`;
     if (ids.length < 2) return `${last(ids[0])} ${chs[0]}`;
-    if (f.w) return `team hcp ${C.teamHcp(chs, f.w)} (${chs.join(" & ")})`;
+    if (f.w) return `team hcp ${C.teamHcp(ids.map(id => chRaw(r, id)), f.w)} (${chs.join(" & ")})`;
     return `hcps ${chs.join(" & ")}`;
   }
   const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") : "";
