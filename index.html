@@ -1,0 +1,1514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BCC Golf</title>
+<meta name="theme-color" content="#1d6a43">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BCC Golf">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Archivo:wght@400;500;600&display=swap">
+<style>
+/* Layout: one phone-width column, sticky event bar, hole entry on top, live leaderboard directly under it */
+:root {
+  --bg: #f2f4ef;
+  --surface: #ffffff;
+  --ink: #17221b;
+  --muted: #5d6a61;
+  --line: #d9dfd6;
+  --green: #1d6a43;
+  --green-soft: #e3efe7;
+  --under: #c0392b;
+  --over: #2f4f8f;
+  --flag: #e8b923;
+  --you: #fff6d6;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730;
+    --green: #5cc28a; --green-soft: #1f3327; --under: #ff7b6b; --over: #8fb0ff; --flag: #f2c94c; --you: #2e2a17;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730;
+  --green: #5cc28a; --green-soft: #1f3327; --under: #ff7b6b; --over: #8fb0ff; --flag: #f2c94c; --you: #2e2a17;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.4;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 32px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--green); }
+.app { max-width: 480px; margin: 0 auto; display: grid; gap: 14px; }
+.num { font-family: var(--display); font-variant-numeric: tabular-nums; }
+
+/* Event bar */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  margin: 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))) 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  background: var(--green); color: #fff;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+}
+.bar-inner { max-width: 480px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .02em; line-height: 1.1; }
+.bar .sub { font-size: 12.5px; opacity: .85; }
+.demo { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; background: var(--flag); color: #1b1b0f; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+
+/* Match strip */
+.match { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 2px 0; }
+.team { font-weight: 600; font-size: 14px; }
+.team small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.team.r { text-align: right; }
+.vs { font-family: var(--display); color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .1em; }
+
+/* Section heads */
+.label { font-size: 11.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+
+/* Hole picker */
+.holes { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.holes button {
+  font-family: var(--display); font-size: 18px; font-weight: 600; padding: 6px 0 4px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; cursor: pointer;
+  display: grid; justify-items: center; line-height: 1;
+}
+.holes button .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; background: transparent; }
+.holes button.done .dot { background: var(--green); }
+.holes button[aria-current="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.holes button[aria-current="true"] .dot { background: var(--flag); }
+
+/* Hole card */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.hole-top { display: flex; align-items: flex-end; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); gap: 12px; }
+.hole-no { font-family: var(--display); font-weight: 700; font-size: 44px; line-height: .9; }
+.hole-no span { font-size: 16px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin-right: 4px; }
+.facts { display: flex; gap: 16px; text-align: center; }
+.facts div { display: grid; }
+.facts b { font-family: var(--display); font-size: 22px; font-weight: 600; line-height: 1; }
+.facts small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.rows { display: grid; }
+.prow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.prow:last-child { border-bottom: 0; }
+.prow.you { background: var(--you); }
+.pname { font-weight: 600; min-width: 0; }
+.pname small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+.strokes { color: var(--green); font-weight: 600; }
+.step { display: grid; grid-template-columns: 40px 48px 40px; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.step button { height: 44px; border: 0; background: var(--green-soft); color: var(--green); font-size: 22px; font-weight: 600; cursor: pointer; }
+.step output { text-align: center; font-family: var(--display); font-size: 28px; font-weight: 700; }
+.step output.u { color: var(--under); }
+.step output.o { color: var(--over); }
+.extras { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: #fff; }
+.mini { display: inline-grid; grid-template-columns: 30px 28px 30px; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; font-size: 13px; }
+.mini button { border: 0; background: transparent; color: var(--green); font-size: 18px; height: 30px; cursor: pointer; }
+.mini span { text-align: center; font-family: var(--display); font-size: 18px; font-weight: 600; }
+.save { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: center; }
+.btn { flex: 1; border: 0; border-radius: 10px; background: var(--green); color: #fff; font: inherit; font-weight: 600; font-size: 16px; padding: 13px 16px; cursor: pointer; }
+.btn.secondary { flex: 0 0 auto; background: transparent; color: var(--green); border: 1px solid var(--line); }
+button:focus-visible, .chip:focus-visible { outline: 3px solid var(--flag); outline-offset: 2px; }
+.toast { font-size: 13px; color: var(--green); padding: 0 16px 12px; min-height: 1.4em; }
+
+/* Group card grid */
+.gridwrap { overflow-x: auto; }
+table.sc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 340px; }
+.sc th, .sc td { text-align: center; padding: 6px 0; font-size: 13px; }
+.sc th { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+.sc td:first-child, .sc th:first-child { text-align: left; padding-left: 10px; white-space: nowrap; }
+.sc td:last-child, .sc th:last-child { padding-right: 10px; }
+.sc tr + tr td { border-top: 1px solid var(--line); }
+.sc .tot { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.mk { display: inline-grid; place-items: center; width: 22px; height: 22px; font-family: var(--display); font-size: 16px; font-weight: 600; }
+.mk.birdie { border: 1.5px solid var(--under); border-radius: 50%; color: var(--under); }
+.mk.eagle { border: 3px double var(--under); border-radius: 50%; color: var(--under); }
+.mk.bogey { border: 1.5px solid var(--over); color: var(--over); }
+.mk.double { border: 3px double var(--over); color: var(--over); }
+.mk.empty { color: var(--line); }
+
+/* Leaderboard */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; padding: 5px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.lb { display: grid; }
+.lrow, .trow { display: grid; grid-template-columns: 26px minmax(0,1fr) 34px 42px 42px 38px; align-items: center; gap: 4px; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+.trow { grid-template-columns: 26px minmax(0,1fr) 48px; }
+.lrow:last-child, .trow:last-child { border-bottom: 0; }
+.trow.mine { background: var(--you); }
+.lrow.isghost { color: var(--muted); }
+.lrow.isghost .who b { font-weight: 500; }
+.gr { font-family: var(--display); font-size: 17px; text-align: right; color: var(--muted); }
+.gr.u { color: var(--under); } .gr.o { color: var(--over); }
+.tot2.prov { color: var(--muted); font-style: italic; }
+.each { display: block; font-size: 10.5px; font-family: var(--body); font-style: normal; color: var(--muted); }
+.lrow.isghost .who small { white-space: normal; }
+.lock { width: 13px; height: 13px; vertical-align: -1px; }
+.thru .lock { color: var(--muted); }
+.ghostrow { background: var(--bg); }
+.locked { display: inline-flex; align-items: baseline; gap: 6px; padding: 8px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
+.locked .num { font-size: 28px; font-weight: 700; color: var(--ink); }
+.locked small { font-size: 12px; }
+.lockcell { color: var(--muted); font-size: 12.5px; }
+.ghostline td { color: var(--muted); }
+.lrow:last-child { border-bottom: 0; }
+.lrow.hd { padding-block: 7px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.lrow.mine { background: var(--you); }
+.pos { font-family: var(--display); font-size: 18px; font-weight: 600; color: var(--muted); }
+.who { min-width: 0; }
+.who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who small { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c { text-align: center; }
+.r { text-align: right; }
+.topar { font-family: var(--display); font-size: 22px; font-weight: 700; text-align: right; }
+.topar.u { color: var(--under); }
+.topar.o { color: var(--over); }
+.thru { font-size: 13px; color: var(--muted); text-align: center; }
+.thru.f { color: var(--ink); font-weight: 600; }
+.tot2 { font-family: var(--display); font-size: 18px; text-align: right; }
+.updated { font-size: 12px; color: var(--muted); }
+.note { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.linkbtn { background: none; border: 0; color: var(--green); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+.lb { overflow-x: auto; }
+table.lbt { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 470px; font-variant-numeric: tabular-nums; }
+.lbt th, .lbt td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: right; background: var(--surface); }
+.lbt tbody tr:last-child td { border-bottom: 0; }
+.lbt th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; }
+.lbt th button { all: unset; cursor: pointer; padding: 2px 2px; border-radius: 4px; }
+.lbt th button:focus-visible { outline: 3px solid var(--flag); }
+.lbt th[aria-sort="ascending"] button, .lbt th[aria-sort="descending"] button { color: var(--ink); }
+.lbt .stick { position: sticky; left: 0; z-index: 1; text-align: left; padding-left: 10px; min-width: 140px; max-width: 150px; box-shadow: 1px 0 0 var(--line); }
+.lbt th.stick { z-index: 2; }
+.lbt tr.mine td { background: var(--you); }
+.lbt tr.isghost td { color: var(--muted); }
+.lbt td:last-child, .lbt th:last-child { padding-right: 10px; }
+.lbt .who b, .lbt .who small { white-space: normal; overflow: visible; }
+.lbt .who b { line-height: 1.2; }
+.pp { display: grid; grid-template-columns: 26px minmax(0,1fr); align-items: center; gap: 4px; }
+.lbt .topar { font-size: 20px; }
+.lbt .thru { text-align: center; }
+.st { font-family: var(--display); font-size: 17px; }
+.st small { font-size: 12px; color: var(--muted); }
+.lbt td.hot { background-image: linear-gradient(var(--green-soft), var(--green-soft)); }
+@media (prefers-reduced-motion: no-preference) {
+  .lbt td { transition: background-color .4s; }
+  .flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: var(--green-soft); } }
+  .flash td { animation: flash 1.2s ease-out; }
+}
+
+/* App tabs and home */
+[hidden] { display: none !important; }
+body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+.view { display: grid; gap: 14px; }
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line);
+  padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.tabs a { display: grid; justify-items: center; gap: 2px; padding: 6px 0; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; letter-spacing: .02em; border-radius: 10px; }
+.tabs a svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tabs a[aria-current="page"] { color: var(--green); background: var(--green-soft); }
+.tabs a:focus-visible { outline: 3px solid var(--flag); }
+.pad { padding: 14px 16px; }
+.hero { padding: 16px; display: grid; gap: 14px; }
+.hero-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.evt { font-size: 40px; font-weight: 700; line-height: 1; margin-top: 4px; }
+.evt span { font-size: 18px; color: var(--muted); font-weight: 600; }
+.evt-sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+.tee { display: grid; justify-items: center; background: var(--green-soft); border-radius: 12px; padding: 8px 12px; color: var(--green); }
+.tee b { font-size: 30px; line-height: 1; }
+.tee small { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.hero-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; }
+.btn.small { flex: 0 0 auto; font-size: 14px; padding: 9px 14px; text-decoration: none; display: inline-block; }
+.skins { padding: 16px; border: 2px solid var(--flag); background: linear-gradient(var(--surface), var(--surface)); display: grid; gap: 8px; }
+.skins-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sk-title { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.05; text-wrap: balance; }
+.sk-desc { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.sk-win { display: flex; gap: 8px; align-items: baseline; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 14px; }
+.sk-win span { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+#skForm { display: grid; gap: 6px; }
+#skForm label { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+#skForm select, #skForm input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; }
+.sk-actions { display: flex; gap: 8px; margin-top: 8px; }
+table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.stand th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; padding: 8px 6px; text-align: right; white-space: nowrap; }
+.stand td { padding: 9px 6px; border-top: 1px solid var(--line); text-align: right; font-size: 14px; }
+.stand .l { text-align: left; }
+.stand th:first-child, .stand td:first-child { padding-left: 12px; text-align: left; width: 36px; }
+.stand th:last-child, .stand td:last-child { padding-right: 12px; }
+.stand td.big { font-family: var(--display); font-size: 19px; font-weight: 700; }
+.stand tr.mine td { background: var(--you); }
+.stand b { font-weight: 600; }
+.hi { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.hcard { padding: 12px; display: grid; gap: 2px; }
+.hcard small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.hcard b { font-size: 30px; line-height: 1.05; }
+.hcard span { font-size: 13px; }
+.gps { padding: 16px; display: grid; gap: 12px; }
+.gps-dist { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; text-align: center; align-items: end; }
+.gps-dist div { display: grid; }
+.gps-dist small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.gps-dist b { font-size: 40px; color: var(--muted); }
+.gps-dist .mid b { font-size: 64px; }
+.gps-msg { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
+.scrollx { overflow-x: auto; }
+table.stand.wide { min-width: 520px; }
+.stand.wide td, .stand.wide th { background: var(--surface); }
+.stand.wide tr.mine td { background: var(--you); }
+.stand.wide .stk { position: sticky; left: 0; z-index: 1; text-align: left; padding-left: 12px; width: auto; min-width: 150px; box-shadow: 1px 0 0 var(--line); white-space: nowrap; }
+.stand.wide td.stk { display: table-cell; }
+.stand.wide .stk .pos { display: inline-block; width: 28px; font-family: var(--display); font-size: 16px; color: var(--muted); }
+.stand.stats th button { all: unset; cursor: pointer; padding: 2px; border-radius: 4px; }
+.stand.stats th button:focus-visible { outline: 3px solid var(--flag); }
+.stand.stats th[aria-sort="ascending"] button, .stand.stats th[aria-sort="descending"] button { color: var(--ink); }
+.stand.stats td { font-family: var(--display); font-size: 17px; padding-inline: 4px; }
+.stand.stats td.l { font-family: var(--body); font-size: 14px; }
+.stand.stats th:first-child, .stand.stats td:first-child { width: auto; }
+.stand.stats td.hot { background: var(--green-soft); font-weight: 700; }
+.stand.stats tr.mine td.hot { background: var(--green-soft); }
+.pick { display: grid; gap: 8px; }
+.pick select { font: inherit; font-size: 16px; font-weight: 600; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; }
+#wkBody { display: grid; gap: 14px; }
+.stand.wk th, .stand.wk td { padding-inline: 3px; }
+.stand.wk th:first-child, .stand.wk td:first-child { padding-left: 10px; width: 30px; }
+.stand.wk td.pos { font-family: var(--display); color: var(--muted); }
+.stand.wk tr.isghost td { color: var(--muted); }
+.stand.wk th { font-size: 10.5px; letter-spacing: .03em; }
+.match-list { display: grid; gap: 8px; }
+.mrow { display: grid; grid-template-columns: 1fr 34px 1fr; align-items: stretch; overflow: hidden; }
+.mrow.mineM { border-color: var(--flag); }
+.side { display: grid; gap: 2px; padding: 10px 12px; }
+.side.b { text-align: right; }
+.side b { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.side .tn { font-size: 12px; color: var(--muted); }
+.side .tp { font-size: 26px; font-weight: 700; line-height: 1; color: var(--muted); }
+.side.win { background: var(--green-soft); }
+.side.win .tp { color: var(--green); }
+.mvs { display: grid; place-items: center; font-family: var(--display); font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: .08em; }
+.rain { text-align: center; }
+.teesheet { overflow: hidden; }
+.teesheet summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.teesheet summary::-webkit-details-marker { display: none; }
+.teesheet summary::after { content: "▾"; color: var(--muted); }
+.teesheet[open] summary::after { content: "▴"; }
+.teesheet[open] summary .updated { display: none; }
+#teeList, #wkUpList { display: grid; gap: 8px; }
+#teeList { padding: 0 10px 12px; }
+.trow2 { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 8px; padding: 10px 12px; align-items: start; }
+.trow2.mineM { border-color: var(--flag); background: var(--you); }
+.tt { font-size: 24px; font-weight: 700; line-height: 1; display: grid; }
+.tt small { font-size: 11px; color: var(--muted); font-family: var(--body); }
+.tm b { font-size: 13.5px; display: block; line-height: 1.25; }
+.tm.r { text-align: right; }
+.pl { display: grid; gap: 1px; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.pl em { font-style: normal; font-family: var(--display); color: var(--ink); }
+.mvs { gap: 2px; align-content: center; }
+.mvs .num { font-size: 14px; color: var(--ink); letter-spacing: 0; text-transform: none; }
+.tsm { font-size: 12.5px; color: var(--muted); }
+.stand.stats th button { all: unset; cursor: pointer; padding: 2px; border-radius: 4px; }
+.stand.ring th, .stand.ring td { padding: 6px 1px; font-size: 13px; text-align: center; }
+.stand.ring th:first-child, .stand.ring td:first-child { padding-left: 10px; text-align: left; width: auto; }
+.stand.ring th:last-child, .stand.ring td:last-child { padding-right: 10px; }
+.stand.ring td.l b { font-size: 12.5px; font-weight: 600; }
+.stand.ring .mk { width: 22px; height: 22px; font-size: 15px; }
+.stand.ring .tot { font-weight: 700; font-size: 17px; }
+.stand.ring .parrow th { font-size: 11px; color: var(--muted); padding-top: 0; }
+.bar-right { display: flex; align-items: center; gap: 10px; }
+.menubtn { background: transparent; border: 1px solid rgba(255,255,255,.4); border-radius: 10px; width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer; color: #fff; }
+.menubtn svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; fill: none; }
+.menu { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: 100%; margin-top: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 200px; padding: 6px; display: grid; box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 8; }
+.menu a { color: var(--ink); text-decoration: none; padding: 12px 14px; border-radius: 8px; font-weight: 600; }
+.menu a:hover, .menu a:focus-visible { background: var(--green-soft); outline: none; }
+.signin { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto; display: grid; place-items: start center; padding: max(48px, env(safe-area-inset-top, 0px)) 16px 32px; }
+.signin .si-card { width: 100%; max-width: 420px; display: grid; gap: 14px; }
+.signin .si-logo { display: grid; gap: 4px; text-align: center; margin-bottom: 6px; }
+.signin .si-logo b { font-family: var(--display); font-size: 34px; color: var(--green); line-height: 1; }
+.signin .card { padding: 18px 16px; }
+.signin form { display: grid; gap: 6px; }
+.signin label { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 6px; }
+.signin input[type=text], .signin input[type=password] { font: inherit; font-size: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); width: 100%; }
+.signin .si-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.signin .si-keep { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); font-weight: 500; margin: 0; }
+.signin .btn { margin-top: 10px; }
+.signin .si-err { color: #b3261e; font-size: 13px; margin: 2px 0 0; }
+.signin .si-err:empty { display: none; }
+.menu .who { padding: 10px 14px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+.menu .who b { display: block; color: var(--ink); font-size: 15px; }
+.menu .who .role { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; background: var(--green-soft); color: var(--green); padding: 2px 8px; border-radius: 999px; }
+.menu button.menuitem { all: unset; cursor: pointer; padding: 12px 14px; border-radius: 8px; font-weight: 600; color: var(--ink); }
+.menu button.menuitem:hover, .menu button.menuitem:focus-visible { background: var(--green-soft); }
+.rules h2 { font-family: var(--display); font-size: 30px; font-weight: 700; margin: 2px 0 4px; line-height: 1.05; }
+.rules h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--green); margin: 14px 0 6px; }
+.rules .arts { display: grid; }
+.art { border-top: 1px solid var(--line); }
+.art summary { cursor: pointer; padding: 12px 0; font-weight: 600; font-size: 15px; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.art summary::-webkit-details-marker { display: none; }
+.art summary::after { content: "▾"; color: var(--muted); }
+.art[open] summary::after { content: "▴"; }
+.artb { padding: 0 0 12px; font-size: 14.5px; line-height: 1.5; }
+.artb p { margin: 0 0 8px; }
+.artb h4 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--green); margin: 14px 0 6px; }
+.artb ul, .artb ol { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 4px; }
+.artb table.rt { width: auto; min-width: 200px; margin: 4px 0 8px; }
+.artb table.rt th, .artb table.rt td { text-align: left; padding: 6px 12px; }
+.capnote { padding: 8px 16px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.change27 { border: 2px solid var(--flag); border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; font-size: 14px; }
+.change27 ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+ul.plain { font-size: 14.5px; line-height: 1.45; }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.gps-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gps-holes { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.gps-holes button { font-family: var(--display); font-size: 17px; font-weight: 600; padding: 7px 0 5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; cursor: pointer; display: grid; justify-items: center; line-height: 1; }
+.gps-holes button .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; background: transparent; }
+.gps-holes button.mapped .dot { background: var(--green); }
+.gps-holes button[aria-current="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.gps-dist b.on { color: var(--ink); }
+.gps-dist .mid b.on { color: var(--green); }
+.map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.map-tool:not(.admin-on) { display: none; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-inner">
+    <div>
+      <h1>BCC 2026 · Event 22</h1>
+      <div class="sub">Tue Aug 25 · Avon Fields Front · Blue tees</div>
+    </div>
+    <div class="bar-right">
+      <span class="demo">Test</span>
+      <button class="menubtn" id="menuBtn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="menu" id="menu" hidden>
+    <div class="who"><b id="whoName"></b><span id="whoRole" class="role"></span></div>
+    <a href="#rules">League rules</a>
+    <a href="#skins-games">Skins winners</a>
+    <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
+  </div>
+</header>
+
+<div class="signin" id="signin" hidden>
+  <div class="si-card">
+    <div class="si-logo"><b>BCC Golf</b><span class="note">Sign in with your GolfSoftware league login</span></div>
+    <div class="card">
+      <form id="siForm" novalidate>
+        <label for="siUser">Email or phone</label>
+        <input id="siUser" type="text" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false">
+        <label for="siPass">Password</label>
+        <input id="siPass" type="password" autocomplete="current-password">
+        <p class="si-err" id="siErr" role="alert"></p>
+        <div class="si-row">
+          <label class="si-keep"><input type="checkbox" id="siKeep" checked> Keep me signed in</label>
+        </div>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+    </div>
+    <div class="card">
+      <p class="label">Prototype only</p>
+      <p class="note" style="margin:6px 0 10px">This page can't reach GolfSoftware, so any email and password works. Pick who to try it as:</p>
+      <div class="seg" role="group" aria-label="Try as">
+        <button type="button" data-as="admin" aria-pressed="true">Admin (Nitin)</button>
+        <button type="button" data-as="player" aria-pressed="false">Player</button>
+      </div>
+      <p class="note" style="margin:10px 0 0">In the real app, admin rights come from GolfSoftware: anyone set as a league admin there gets admin here. "Keep me signed in" saves the login in the phone's secure storage and signs back in quietly when the session runs out.</p>
+    </div>
+  </div>
+</div>
+
+<main class="app">
+  <section class="view" id="v-home" aria-label="Home">
+    <div class="card hero">
+      <div class="hero-top">
+        <div>
+          <p class="label">This week</p>
+          <div class="evt num">Event 22 <span>of 22</span></div>
+          <div class="evt-sub">Tue Aug 25 · Avon Fields Front · first tee 5:00 PM</div>
+        </div>
+        <div class="tee"><small>Your tee</small><b class="num">5:08</b><small>PM · hole 1</small></div>
+      </div>
+      <div class="hero-foot">
+        <span>Playing with Two Hearted Ail (Ebbeler, Ghost)</span>
+        <a class="btn small" href="#score">Start scoring</a>
+      </div>
+    </div>
+
+    <div class="card skins" aria-labelledby="skl">
+      <div class="skins-head">
+        <p class="label" id="skl">This week's skins</p>
+        <button class="linkbtn" id="skEditBtn" type="button">Edit</button>
+      </div>
+      <div id="skView">
+        <div class="sk-title" id="skTitle"></div>
+        <div class="sk-desc" id="skDesc"></div>
+        <div class="sk-win"><span>Winner</span><b id="skWinner"></b></div>
+        <a class="linkbtn" href="#skins-games" style="margin-top:8px;display:inline-block">Past winners</a>
+      </div>
+      <form id="skForm" hidden>
+        <label for="skCustom">Game</label>
+        <input id="skCustom" type="text" list="skIdeas" autocomplete="off" placeholder="e.g. Closest to pin on 6">
+        <datalist id="skIdeas"></datalist>
+        <label for="skNote">Details</label>
+        <input id="skNote" type="text" placeholder="e.g. $2 buy-in, winner takes the pot">
+        <label for="skWin">Winner</label>
+        <input id="skWin" type="text" placeholder="Add after the round">
+        <div class="sk-actions"><button class="btn small" type="submit">Post skins</button><button class="btn small secondary" type="button" id="skCancel">Cancel</button></div>
+        <p class="updated" style="margin:0">Only league admins see Edit. Adding a winner saves the week to Past winners. In the real app everyone sees the update; in this prototype it is saved on your device only.</p>
+      </form>
+    </div>
+
+    <section style="display:grid;gap:8px" aria-labelledby="psl">
+      <div class="head"><p class="label" id="psl">Player standings</p><span class="updated">18 weeks played · 3 lowest dropped</span></div>
+      <div class="card"><table class="stand" id="playerStand"></table></div>
+      <div class="head"><span class="updated">Ranked by Best 15. Missed weeks count as 0, as the rules sheet says.</span><button class="linkbtn" id="moreP" type="button">Show all 20</button></div>
+    </section>
+
+    <section style="display:grid;gap:8px" aria-labelledby="tsl">
+      <div class="head"><p class="label" id="tsl">Team standings</p><span class="updated">2026 season · events 1 to 21</span></div>
+      <div class="card"><table class="stand" id="teamStand"></table></div>
+    </section>
+
+    <section style="display:grid;gap:8px" aria-labelledby="ssl">
+      <div class="head"><p class="label" id="ssl">Season stats</p><span class="updated">Averages per 9 holes · events 1 to 21</span></div>
+      <div class="card"><table class="stand stats" id="seasonStats"></table></div>
+      <div class="head"><span class="updated">Tap a column to sort; tap again to flip.</span><button class="linkbtn" id="moreS" type="button">Show all 20</button></div>
+    </section>
+
+    <p class="note">Standings, season stats and the skins game list come from your GolfSoftware site (pulled Nov 6). The 2026 season used the old points rules; next year these tables fill from the new weekly points.</p>
+  </section>
+
+  <section class="view" id="v-score" aria-label="Score" hidden>
+  <div class="match" aria-label="Your group">
+    <div class="team">#4 Beer Bombers<small>Kumar · Woolum</small></div>
+    <div class="vs">with</div>
+    <div class="team r">#1 Two Hearted Ail<small>Ebbeler · Ghost</small></div>
+  </div>
+
+  <details class="card teesheet" id="teeSheet">
+    <summary><span class="label">Full tee sheet · Event 22</span><span class="updated">5 tee times · tap to open</span></summary>
+    <div id="teeList"></div>
+  </details>
+
+  <section style="display:grid;gap:8px" aria-labelledby="hl">
+    <div class="head"><p class="label" id="hl">Hole</p><span class="updated">Tee time 5:08 PM · start hole 1</span></div>
+    <div class="holes" id="holes" role="tablist"></div>
+  </section>
+
+  <section class="card" aria-label="Score entry">
+    <div class="hole-top">
+      <div class="hole-no" id="holeNo"></div>
+      <div class="facts">
+        <div><b id="fPar"></b><small>Par</small></div>
+        <div><b id="fYds"></b><small>Yds</small></div>
+        <div><b id="fHcp"></b><small>Hcp</small></div>
+      </div>
+    </div>
+    <div class="rows" id="rows"></div>
+    <div class="save">
+      <button class="btn secondary" id="prev" type="button" aria-label="Previous hole">‹</button>
+      <button class="btn" id="saveBtn" type="button">Save hole</button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card" aria-labelledby="gl">
+    <div class="head" style="padding:12px 12px 4px"><p class="label" id="gl">Your group's card</p><span class="updated">○ birdie · □ bogey</span></div>
+    <div class="gridwrap"><table class="sc" id="sc"></table></div>
+  </section>
+
+  <section style="display:grid;gap:8px" aria-labelledby="lbl">
+    <div class="head">
+      <p class="label" id="lbl">Live leaderboard</p>
+      <span class="updated" id="upd">Updated just now</span>
+    </div>
+    <div class="card lb" id="lb"></div>
+    <p class="updated" style="margin:0">Tap a column to sort; tap again to flip. Pos is always the net standing. Fwy counts par 4s only.</p>
+    <div class="head"><span class="updated">Pts update live; final when everyone finishes.</span><button class="linkbtn" id="finish" type="button">Finish everyone's round</button></div>
+  </section>
+
+
+  <p class="note">Prototype using real scores from event 22 (Aug 25), pulled from GolfSoftware on Nov 5. Other groups start part-way through so the board looks live. Saving stays on this page and does not change the real league.<br><br>
+  2027 rules shown here: no player-vs-player matches or singles bonus; ghosts are locked at 36 net and count for the team only, so they don't take a place or earn points; weekly points come from net finish among real golfers. Points come from the points table in your GolfSoftware league setup (1st earns <span id="topPts"></span>, 20th earns 1)<span id="fieldN" hidden></span>, and tied golfers split the points of the places they share. Change the table or the number of teams in GolfSoftware and the app follows. Putts, fairways and greens for other golfers are sample numbers shaped by each player's 2026 season averages, because GolfSoftware only shares per-hole stats with signed-in players; in the real app they are what each golfer enters. Thoney and Wegrzyn had no scores posted for this event.</p>
+  </section>
+
+  <section class="view" id="v-rounds" aria-label="Previous rounds" hidden>
+    <div class="card pad pick">
+      <label class="label" for="wkPick">Previous rounds</label>
+      <select id="wkPick"></select>
+      <div class="updated" id="wkInfo"></div>
+    </div>
+
+    <div id="wkBody">
+      <section style="display:grid;gap:8px" aria-labelledby="wpl">
+        <div class="head"><p class="label" id="wpl">Players</p><span class="updated">Tap a column to sort</span></div>
+        <div class="card"><table class="stand stats wk" id="wkPlayers"></table></div>
+      </section>
+
+      <section style="display:grid;gap:8px" aria-labelledby="wml">
+        <div class="head"><p class="label" id="wml">Team matchups</p><span class="updated">Tee-time order · team net · team pts</span></div>
+        <div class="match-list" id="wkMatches"></div>
+      </section>
+    </div>
+    <div class="card pad rain" id="wkRain" hidden></div>
+
+    <section id="wkUpcoming" style="display:grid;gap:8px" hidden aria-labelledby="wul">
+      <div class="head"><p class="label" id="wul">Tee times and matchups</p><span class="updated">In tee-time order</span></div>
+      <div class="match-list" id="wkUpList"></div>
+    </section>
+
+    <section id="ringer" style="display:grid;gap:8px" hidden aria-labelledby="rgl">
+      <div class="head"><p class="label" id="rgl">Ringer</p>
+        <div class="seg" role="group" aria-label="Nine">
+          <button type="button" data-n="front" aria-pressed="true">Front 9</button>
+          <button type="button" data-n="back" aria-pressed="false">Back 9</button>
+        </div>
+      </div>
+      <div class="card"><table class="stand stats ring" id="ringTable"></table></div>
+      <span class="updated" id="ringNote"></span>
+    </section>
+
+    <p class="note">Weekly results from your GolfSoftware reports (pulled Nov 6). 2026 points used the old match rules; Fwy, GIR and putts are what golfers entered that week.</p>
+  </section>
+
+  <section class="view" id="v-rules" aria-label="League rules" hidden>
+    <div class="card pad rules">
+      <p class="label">League rules</p>
+      <h2>BCC Golf League Rules</h2>
+      <div class="change27"><b>2027 changes</b><ul><li>Ghost scores are locked at 36 net (replaces the weekly league average in Article VII).</li><li>No singles matches: the 5-point singles bonus (Article IV) and singles putt concessions (Article VIII) are gone.</li></ul></div>
+      <p class="updated" style="margin:0 0 8px">Tap an article to open it.</p>
+      <div class="arts">
+<details class="art"><summary>I – Purpose
+and Spirit of the League</summary><div class="artb">
+<p>The purpose of the BCC Golf League is to provide a competitive, fair,
+and enjoyable golf experience for players of all skill levels.</p>
+<p>While league standings, championships, and weekly competition are
+important, the league exists primarily to promote fellowship,
+sportsmanship, and enjoyment of the game.</p>
+<p>All players are expected to:</p>
+<ul>
+<li>Conduct themselves with honesty and integrity.</li>
+<li>Respect fellow competitors, course staff, and league officials.</li>
+<li>Apply league rules fairly and consistently.</li>
+<li>Resolve disputes in a respectful manner.</li>
+<li>Act in the spirit of the game even when a specific situation is not
+addressed within the rulebook.</li>
+</ul>
+<p>The Board and Commissioner reserve the right to interpret rules and
+make decisions consistent with the spirit and intent of the league.</p>
+</div></details>
+<details class="art"><summary>II – League
+Organization</summary><div class="artb">
+<h4>League Structure</h4>
+<ul>
+<li>The league shall consist of ten (10) teams.</li>
+<li>Each team shall consist of two (2) rostered players.</li>
+<li>The regular season shall consist of eighteen (18) scheduled
+weeks.</li>
+<li>Team and Individual Champions shall be determined by regular season
+results.</li>
+</ul>
+<h4>League Governance</h4>
+<p>The league shall be governed by a Board consisting of four (4)
+members, including the Commissioner.</p>
+<h4>Board Responsibilities</h4>
+<p>The Board shall be responsible for:</p>
+<ul>
+<li>Maintaining league rules.</li>
+<li>Approving rule changes.</li>
+<li>Resolving disputes.</li>
+<li>Reviewing handicap concerns.</li>
+<li>Addressing situations not specifically covered within this
+Rulebook.</li>
+<li>Administering weekly betting games.</li>
+</ul>
+<h4>Quorum</h4>
+<p>A quorum shall consist of three (3) Board members.</p>
+<h4>Rule Changes</h4>
+<p>League rule changes shall require approval of at least three (3)
+Board members.</p>
+<p>Unless otherwise specified, rule changes shall take effect at the
+start of the following season.</p>
+<h4>Commissioner Authority</h4>
+<p>The Commissioner shall administer league operations, scheduling,
+scoring, handicaps, standings, and rule interpretation.</p>
+<p>The Commissioner may issue temporary rulings during the season when
+immediate decisions are required. Such rulings may be reviewed by the
+Board upon request.</p>
+</div></details>
+<details class="art"><summary>III –
+Handicap System and Tee Selection</summary><div class="artb">
+<h4>Tee Selection</h4>
+<p>The league utilizes World Handicap System (WHS) principles to allow
+equitable competition from multiple tee boxes.</p>
+<p>Available tee boxes:</p>
+<ul>
+<li>Blue Tees (Default)</li>
+<li>White Tees (Optional for any player)</li>
+<li>Gold Tees (Available to players age 65 and older and required for 14
+and younger)</li>
+</ul>
+<p>Players shall declare their tee selection prior to Week 1.</p>
+<p>Unless otherwise declared, players shall compete from the Blue
+Tees.</p>
+<h4>Handicap Index Calculation</h4>
+<p>Definitions:</p>
+<ul>
+<li>Tee Difficulty = Slope Rating ÷ 113</li>
+<li>Scratch Par = Course Rating</li>
+</ul>
+<p>Variation for each round:</p>
+<p>Variation = (Gross Score – Scratch Par) ÷ Tee Difficulty</p>
+<p>Handicap Index:</p>
+<p>Average of the lowest eight (8) Variations from the player’s most
+recent twenty (20) rounds.</p>
+<h4>Daily Handicap</h4>
+<p>Definitions:</p>
+<ul>
+<li>Tee Adjustment = Scratch Par – Par</li>
+</ul>
+<p>Formula:</p>
+<p>Handicap = (Handicap Index × Tee Difficulty) + Tee Adjustment</p>
+<p>The league scoring software shall maintain official handicaps.</p>
+</div></details>
+<details class="art"><summary>IV – Weekly
+Competition</summary><div class="artb">
+<h4>Individual Points</h4>
+<p>Players earn weekly points as follows:</p>
+<ul>
+<li>1st Place = 20 points</li>
+<li>2nd Place = 19 points</li>
+<li>Continuing through:</li>
+<li>20th Place = 1 point</li>
+</ul>
+<h4>Singles Match Bonus</h4>
+<p>A player shall earn five (5) additional points for defeating their
+designated weekly singles opponent.</p>
+<h4>Weekly Point Total</h4>
+<p>Weekly Point Total = Placement Points + Singles Match Bonus</p>
+</div></details>
+<details class="art"><summary>V – Individual
+Championship</summary><div class="artb">
+<h4>Absences</h4>
+<p>Absent players shall receive zero (0) individual points for the
+week.</p>
+<p>Substitute and ghost scores shall not generate individual points for
+absent players.</p>
+<h4>Dropped Scores</h4>
+<p>At the conclusion of the season, each player’s three (3) lowest
+weekly point totals shall be discarded.</p>
+<p>All weekly point totals, including absence weeks, are eligible for
+removal.</p>
+<p>Final standings shall be determined using each player’s best fifteen
+(15) weekly point totals.</p>
+<h4>Individual Championship
+Tiebreakers</h4>
+<ol type="1">
+<li>Head-to-head result.</li>
+<li>Gross Ringer Match Play.</li>
+</ol>
+<p>Gross Ringer Match Play shall compare each player’s lowest gross
+score recorded on each hole throughout the season.</p>
+<p>The player winning the greater number of holes shall receive the
+higher standing.</p>
+</div></details>
+<details class="art"><summary>VI – Team
+Championship</summary><div class="artb">
+<h4>Weekly Team Match</h4>
+<p>Each weekly team matchup shall award:</p>
+<ul>
+<li>Win = 10 Team Points</li>
+<li>Tie = 5 Team Points</li>
+<li>Loss = 0 Team Points</li>
+</ul>
+<h4>Team Championship</h4>
+<p>The Team Championship shall be determined by total Team Points
+accumulated during the regular season.</p>
+<h4>Team Championship
+Tiebreakers</h4>
+<ol type="1">
+<li>Head-to-head result.</li>
+<li>Combined Individual Championship point totals of rostered
+players.</li>
+</ol>
+</div></details>
+<details class="art"><summary>VII –
+Substitute Players and Ghost Scores</summary><div class="artb">
+<h4>Substitute Players</h4>
+<p>Substitute players may be used when a rostered player is
+unavailable.</p>
+<p>Substitute scores shall count toward team competition only.</p>
+<p>Substitute scores shall not generate individual points for absent
+players.</p>
+<h4>Ghost Scores</h4>
+<p>When no substitute is available, a ghost score shall be used.</p>
+<p>The ghost score shall equal the league average net score for the week
+of play.</p>
+<p>Ghost scores shall count only for team competition.</p>
+</div></details>
+<details class="art"><summary>VIII – Local Rules</summary><div class="artb">
+<h4>Lost Ball / Out of Bounds</h4>
+<p>Any ball that is lost or out of bounds may be dropped laterally at
+the point where the ball was lost or crossed out of bounds with a
+one-stroke penalty.</p>
+<p>This local rule replaces stroke-and-distance relief.</p>
+<h4>Fairway Relief</h4>
+<p>A ball lying in a divot, repaired divot, tire track, sprinkler repair
+scar, or similar abnormal fairway damage may be lifted and placed within
+one club length:</p>
+<ul>
+<li>No closer to the hole.</li>
+<li>Must remain in the fairway.</li>
+<li>No penalty.</li>
+</ul>
+<h4>Maximum Score Per Hole</h4>
+<p>The maximum score on any hole shall be double par.</p>
+<table class="stand rt">
+
+<thead>
+<tr class="header">
+<th>Par</th>
+<th>Maximum Score</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3</td>
+<td>6</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>8</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<p>Once a player reaches double par, the player shall pick up and record
+the maximum score.</p>
+<h4>Conceded Putts</h4>
+<p>A player’s designated weekly singles opponent may concede a putt at
+any time.</p>
+<p>A conceded putt shall be considered holed with the next stroke.</p>
+<p>Only the designated singles opponent may grant a concession.</p>
+</div></details>
+<details class="art"><summary>IX – Pace of Play</summary><div class="artb">
+<p>The league encourages Ready Golf and efficient play at all times.</p>
+<p>Players should:</p>
+<ul>
+<li>Play when safe and ready.</li>
+<li>Limit ball searches whenever practical.</li>
+<li>Be prepared when it is their turn.</li>
+<li>Record scores promptly.</li>
+<li>Proceed to the next tee without unnecessary delay.</li>
+<li>Pick up once double par has been reached.</li>
+</ul>
+<p>The goal of the league is to complete each round in a reasonable
+amount of time while preserving competitive integrity.</p>
+</div></details>
+<details class="art"><summary>X – Weather
+and Schedule Adjustments</summary><div class="artb">
+<p>If league play is canceled due to weather, course closure, or other
+circumstances beyond league control, the canceled week shall be moved to
+the end of the regular season schedule.</p>
+<p>The Commissioner may make reasonable scheduling adjustments when
+necessary.</p>
+</div></details>
+<details class="art"><summary>XI – Final Authority</summary><div class="artb">
+<p>Situations not specifically addressed within this Constitution shall
+be resolved by the Commissioner and Board in a manner consistent with
+the spirit, intent, and fairness of league competition.</p>
+</div></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-skins-games" aria-label="Skins games" hidden>
+    <div class="card pad rules">
+      <p class="label">Skins</p>
+      <h2>Past winners</h2>
+      <p class="updated" style="margin:0 0 8px">Each week's game and winner, saved when an admin posts the winner on Home.</p>
+      <table class="stand" id="skHist"></table>
+      <p class="updated" id="skHistEmpty" style="margin:8px 0 0">No winners posted yet. 2026 winners weren't kept in GolfSoftware, so the history starts with the first winner posted here.</p>
+      <h2 style="margin-top:22px">Game ideas</h2>
+      <p class="updated" style="margin:0 0 4px">From your league site. These show as suggestions when typing the game, but you can type anything.</p>
+      <h3>Front nine</h3>
+      <ul class="plain" id="sgFront"></ul>
+      <h3>Back nine</h3>
+      <ul class="plain" id="sgBack"></ul>
+    </div>
+  </section>
+
+  <section class="view" id="v-gps" aria-label="GPS" hidden>
+    <div class="card gps">
+      <div class="gps-top">
+        <div class="seg" role="group" aria-label="Nine">
+          <button type="button" data-nine="F" aria-pressed="true">Front</button>
+          <button type="button" data-nine="B" aria-pressed="false">Back</button>
+        </div>
+        <span class="updated" id="gpsAcc">Waiting for location…</span>
+      </div>
+      <div class="gps-holes" id="gpsHoles" role="tablist" aria-label="Hole"></div>
+      <div class="gps-hole"><span class="label" id="gpsHoleInfo"></span></div>
+      <div class="gps-dist" aria-live="polite">
+        <div><small>Front</small><b class="num" id="dF">—</b></div>
+        <div class="mid"><small>Middle</small><b class="num" id="dM">—</b></div>
+        <div><small>Back</small><b class="num" id="dB">—</b></div>
+      </div>
+      <p class="gps-msg" id="gpsMsg">Yardages to the green from where you stand.</p>
+      <button class="btn" id="gpsStart" type="button">Turn on GPS</button>
+    </div>
+
+    <div class="card pad map-tool" id="mapTool">
+      <p class="label" style="margin-bottom:6px">Map this green (admin)</p>
+      <p class="note" style="margin:0 0 10px">Stand on the spot and tap. Wait until accuracy is under about 5 yards. Each spot saves on this phone; tap Share when you're done so the greens can be added for everyone.</p>
+      <div class="map-btns">
+        <button class="btn small secondary" type="button" data-set="f">Set front</button>
+        <button class="btn small secondary" type="button" data-set="m">Set middle</button>
+        <button class="btn small secondary" type="button" data-set="b">Set back</button>
+      </div>
+      <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
+      <div class="map-btns" style="margin-top:10px">
+        <button class="btn small" type="button" id="mapShare">Share green data</button>
+        <button class="linkbtn" type="button" id="mapClear">Clear this hole</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="App sections">
+  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
+  <a href="#score" data-tab="score"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Score</a>
+  <a href="#rounds" data-tab="rounds"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Rounds</a>
+  <a href="#gps" data-tab="gps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4"/><path d="M6 4l11 4-11 4"/></svg>GPS</a>
+</nav>
+
+<script>
+(() => {
+  const COURSE = {
+    par:  [4,3,4,4,4,3,4,3,4],
+    yds:  [369,153,271,432,354,142,358,177,362],
+    hcp:  [5,17,11,1,9,13,7,15,3]
+  };
+  const PAR_TOTAL = COURSE.par.reduce((a,b)=>a+b,0);
+  const GHOST_NET = 36;
+  // League setup from GolfSoftware (league/GetAll, snapshot Nov 6). The real app reads this live on every load.
+  const SETUP = {
+    teams: 10, playersPerTeam: 2,
+    fieldPoints: [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1] // PTIFieldPointsArray, zeros after
+  };
+  const TEAMS = {1:"Two Hearted Ail",2:"Who's Your Caddie",3:"Roger and Me",4:"Beer Bombers",5:"Weapons of Grass Destruction",6:"Keepin' it 100",7:"Missing in Action",8:"FIRGIRBIRGIR",9:"Bogey Knights",10:"RahOleg in One"};
+  // Snapshot of GolfSoftware livedata.js for event 22 (players with posted scores)
+  const PLAYERS = [
+    {id:8,  name:"Kumar, Nitin",      team:4, h:6,  s:[5,3,4,5,4,5,5,4,7], group:true, you:true},
+    {id:7,  name:"Woolum, Derek",     team:4, h:2,  s:[7,5,5,5,5,4,5,3,5], group:true},
+    {id:2,  name:"Ebbeler, Bob",      team:1, h:14, s:[5,4,4,6,6,4,6,4,7], group:true},
+    {id:25, name:"Zurcher, Dan",      team:2, h:8,  s:[6,4,5,6,5,4,4,4,5], start:7},
+    {id:3,  name:"Miller, Allen",     team:2, h:7,  s:[6,4,6,6,6,4,7,6,5], start:7},
+    {id:17, name:"Zimmerman, Scott",  team:6, h:9,  s:[8,3,4,7,6,4,6,6,7], start:4},
+    {id:21, name:"Richardson, Max",   team:8, h:8,  s:[4,6,4,5,6,3,6,4,4], start:4},
+    {id:10, name:"Wolery, Matt",      team:5, h:3,  s:[6,5,4,5,4,3,5,3,8], start:3},
+    {id:39, name:"Dixon, Tim",        team:9, h:10, s:[5,5,6,5,6,4,5,4,6], start:3},
+    {id:24, name:"Kumar, Nishir",     team:7, h:10, s:[6,5,8,5,5,5,7,3,5], start:2}
+  ];
+  // Ghost subs in the event 22 pairings, one per open slot
+  const GHOSTS = [1,3,3,5,6,7,8,9,10,10].map((t, k) => ({id: "g" + k, team: t, ghost: true, group: t === 1}));
+  const FIELD = SETUP.teams * SETUP.playersPerTeam;
+  const GROUP_START = 5;
+
+  const rank = COURSE.hcp.map(v => COURSE.hcp.filter(x => x < v).length + 1);
+  const strokesOn = (h, i) => Math.floor(h / 9) + (rank[i] <= h % 9 ? 1 : 0);
+
+  // Sample putts, fairways and greens per hole, shaped by each golfer's 2026 season averages.
+  // GolfSoftware only shares per-hole stats with signed-in players; the real app shows what golfers enter.
+  const SAMPLE = {"8":{"f":[0,0,1,0,0,0,1,0,0],"g":[0,0,1,0,0,0,0,0,0],"p":[2,1,2,2,2,2,1,2,2]},"7":{"f":[1,0,0,0,1,0,0,0,0],"g":[1,0,0,0,1,0,0,0,0],"p":[1,2,2,2,2,1,2,2,2]},"2":{"f":[0,0,0,1,0,0,0,0,0],"g":[0,0,0,0,0,0,0,0,0],"p":[2,2,2,2,2,2,2,2,2]},"25":{"f":[0,0,0,0,0,0,1,0,0],"g":[0,0,0,0,0,0,0,0,1],"p":[2,2,2,2,1,2,2,2,2]},"3":{"f":[1,0,0,0,1,0,0,0,0],"g":[0,0,0,0,0,0,1,0,0],"p":[2,2,2,1,2,2,2,2,1]},"17":{"f":[0,0,0,0,1,0,0,0,0],"g":[0,0,0,0,0,0,1,0,0],"p":[2,2,2,1,2,2,2,2,2]},"21":{"f":[1,0,0,0,0,0,0,0,0],"g":[1,0,0,0,0,0,0,0,0],"p":[1,2,2,2,2,1,2,2,2]},"10":{"f":[1,0,0,0,1,0,0,0,0],"g":[0,1,0,0,0,0,1,0,0],"p":[2,2,2,1,2,2,2,2,1]},"39":{"f":[0,0,0,0,0,0,1,0,0],"g":[0,0,0,0,0,0,0,0,1],"p":[2,2,2,2,2,2,2,2,2]},"24":{"f":[0,0,0,0,1,0,0,0,0],"g":[0,0,0,0,0,0,1,0,0],"p":[2,2,2,1,2,2,2,2,1]}};
+  const state = { hole: GROUP_START, scores: {}, putts: {}, fir: {}, gir: {}, saved: new Set(), sort: "net", dir: 1 };
+  const fillStats = (pl, i) => {
+    const smp = SAMPLE[pl.id];
+    state.putts[pl.id][i] = smp.p[i]; state.fir[pl.id][i] = !!smp.f[i]; state.gir[pl.id][i] = !!smp.g[i];
+  };
+  PLAYERS.forEach(pl => {
+    const n = pl.group ? GROUP_START : pl.start;
+    state.scores[pl.id] = pl.s.map((v, i) => i < n ? v : null);
+    state.putts[pl.id] = Array(9).fill(null); state.fir[pl.id] = Array(9).fill(null); state.gir[pl.id] = Array(9).fill(null);
+    for (let i = 0; i < n; i++) fillStats(pl, i);
+  });
+  const you = PLAYERS.find(p => p.you);
+  state.putts[you.id] = [2,1,2,2,2,null,null,null,null];
+  state.fir[you.id] = [true,false,false,true,true,null,null,null,null];
+  state.gir[you.id] = [false,true,true,false,true,null,null,null,null];
+  for (let i = 0; i < GROUP_START; i++) state.saved.add(i);
+  const pending = {};
+
+  const $ = id => document.getElementById(id);
+  const group = PLAYERS.filter(p => p.group);
+  const fmtToPar = v => v === 0 ? "E" : (v > 0 ? "+" + v : String(v));
+  const cls = v => v < 0 ? "u" : (v > 0 ? "o" : "");
+  const LOCK = '<svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  const fmtPts = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+
+  function loadPending() {
+    const i = state.hole;
+    group.forEach(pl => {
+      const cur = state.scores[pl.id][i];
+      pending[pl.id] = cur != null ? cur : COURSE.par[i];
+    });
+    pending.st = {};
+    group.forEach(pl => { pending.st[pl.id] = { putts: state.putts[pl.id][i] ?? 2, fir: !!state.fir[pl.id][i], gir: !!state.gir[pl.id][i] }; });
+  }
+
+  function renderHoles() {
+    const h = $("holes"); h.innerHTML = "";
+    COURSE.par.forEach((_, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-current", i === state.hole ? "true" : "false");
+      b.setAttribute("aria-label", "Hole " + (i + 1));
+      if (state.saved.has(i)) b.classList.add("done");
+      b.innerHTML = (i + 1) + '<span class="dot"></span>';
+      b.onclick = () => { state.hole = i; loadPending(); renderAll(); };
+      h.appendChild(b);
+    });
+  }
+
+  function renderHole() {
+    const i = state.hole;
+    $("holeNo").innerHTML = "<span>HOLE</span>" + (i + 1);
+    $("fPar").textContent = COURSE.par[i];
+    $("fYds").textContent = COURSE.yds[i];
+    $("fHcp").textContent = COURSE.hcp[i];
+    const rows = $("rows"); rows.innerHTML = "";
+    group.forEach(pl => {
+      const st = strokesOn(pl.h, i);
+      const v = pending[pl.id];
+      const diff = v - COURSE.par[i];
+      const row = document.createElement("div");
+      row.className = "prow" + (pl.you ? " you" : "");
+      row.innerHTML = `
+        <div class="pname">${pl.name}${pl.you ? " (you)" : ""}
+          <small>${TEAMS[pl.team]} · hcp ${pl.h}${st ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : ""}</small></div>
+        <div class="step" role="group" aria-label="Strokes for ${pl.name}">
+          <button type="button" aria-label="One fewer">−</button>
+          <output class="${cls(diff)}">${v}</output>
+          <button type="button" aria-label="One more">+</button>
+        </div>`;
+      const [minus, plus] = row.querySelectorAll(".step button");
+      minus.onclick = () => { pending[pl.id] = Math.max(1, pending[pl.id] - 1); renderHole(); };
+      plus.onclick = () => { pending[pl.id] = Math.min(2 * COURSE.par[i], pending[pl.id] + 1); renderHole(); };
+      {
+        const ps = pending.st[pl.id];
+        const ex = document.createElement("div");
+        ex.className = "extras";
+        const firBtn = COURSE.par[i] > 3 ? `<button type="button" class="chip" data-k="fir" aria-pressed="${ps.fir}" aria-label="Fairway hit, ${pl.name}">Fairway</button>` : "";
+        ex.innerHTML = `
+          <span class="mini" role="group" aria-label="Putts for ${pl.name}"><button type="button" aria-label="One fewer putt">−</button><span>${ps.putts}</span><button type="button" aria-label="One more putt">+</button></span>
+          <span style="font-size:13px;color:var(--muted)">putts</span>
+          ${firBtn}
+          <button type="button" class="chip" data-k="gir" aria-pressed="${ps.gir}" aria-label="Green in regulation, ${pl.name}">Green</button>`;
+        const pb = ex.querySelectorAll(".mini button");
+        pb[0].onclick = () => { ps.putts = Math.max(0, ps.putts - 1); renderHole(); };
+        pb[1].onclick = () => { ps.putts = Math.min(6, ps.putts + 1); renderHole(); };
+        ex.querySelectorAll(".chip").forEach(c => c.onclick = () => { ps[c.dataset.k] = !ps[c.dataset.k]; renderHole(); });
+        row.appendChild(ex);
+      }
+      rows.appendChild(row);
+    });
+    const cap = document.createElement("div");
+    cap.className = "capnote"; cap.textContent = `Max score here is ${2 * COURSE.par[i]} (double par). Pick up once you reach it.`;
+    rows.appendChild(cap);
+    const gr = document.createElement("div");
+    gr.className = "prow ghostrow";
+    gr.innerHTML = `
+      <div class="pname">Ghost<small>Two Hearted Ail · fills the open spot</small></div>
+      <div class="locked" aria-label="Ghost score locked at ${GHOST_NET} net">${LOCK}<span class="num">${GHOST_NET}</span><small>net</small></div>`;
+    rows.appendChild(gr);
+    $("saveBtn").textContent = state.saved.has(i) ? `Update hole ${i + 1}` : `Save hole ${i + 1}`;
+    $("prev").disabled = i === 0;
+  }
+
+  function mark(v, par) {
+    if (v == null) return '<span class="mk empty">·</span>';
+    const d = v - par;
+    const c = d <= -2 ? "eagle" : d === -1 ? "birdie" : d === 1 ? "bogey" : d >= 2 ? "double" : "";
+    return `<span class="mk ${c}">${v}</span>`;
+  }
+
+  function renderCard() {
+    let html = "<tr><th>Hole</th>" + COURSE.par.map((_, i) => `<th>${i + 1}</th>`).join("") + "<th>Out</th><th>Net</th></tr>";
+    html += "<tr><td style='color:var(--muted)'>Par</td>" + COURSE.par.map(p => `<td style="color:var(--muted)">${p}</td>`).join("") + `<td class="tot" style="color:var(--muted)">${PAR_TOTAL}</td><td></td></tr>`;
+    group.forEach(pl => {
+      const s = state.scores[pl.id];
+      const tot = s.reduce((a, v) => a + (v || 0), 0);
+      const done = s.every(v => v != null);
+      html += `<tr><td>${pl.name.split(",")[0]}</td>` + s.map((v, i) => `<td>${mark(v, COURSE.par[i])}</td>`).join("") + `<td class="tot">${tot || ""}</td><td class="tot">${done ? tot - pl.h : ""}</td></tr>`;
+    });
+    html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${GHOST_NET}</td></tr>`;
+    $("sc").innerHTML = html;
+  }
+
+  function standings() {
+    const rows = PLAYERS.map(pl => {
+      const s = state.scores[pl.id];
+      let thru = 0, gross = 0, parThru = 0, strokes = 0;
+      s.forEach((v, i) => { if (v != null) { thru++; gross += v; parThru += COURSE.par[i]; strokes += strokesOn(pl.h, i); } });
+      let putts = 0, fir = 0, firOpp = 0, gir = 0;
+      s.forEach((v, i) => { if (v != null) { putts += state.putts[pl.id][i] || 0; if (COURSE.par[i] > 3) { firOpp++; if (state.fir[pl.id][i]) fir++; } if (state.gir[pl.id][i]) gir++; } });
+      return { pl, thru, gross, grossToPar: gross - parThru, netToPar: gross - strokes - parThru, net: gross - pl.h, putts, fir, firOpp, gir };
+    }).filter(r => r.thru > 0);
+    // Rank by net to par; ghosts sort after real golfers on the same score
+    rows.sort((a, b) => a.netToPar - b.netToPar || (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || b.thru - a.thru);
+    // Positions and points: linear scale, tied golfers split the points of the places they share
+    let i = 0;
+    while (i < rows.length) {
+      let j = i;
+      while (j + 1 < rows.length && rows[j + 1].netToPar === rows[i].netToPar) j++;
+      let sum = 0;
+      for (let k = i; k <= j; k++) sum += SETUP.fieldPoints[k] ?? 0;
+      const pts = sum / (j - i + 1);
+      for (let k = i; k <= j; k++) { rows[k].pos = i + 1; rows[k].tied = j > i; rows[k].pts = pts; }
+      i = j + 1;
+    }
+    return rows;
+  }
+
+  const COLS = [
+    { key: "thru",  label: "Thru",  dir: -1, val: r => r.thru },
+    { key: "net",   label: "Net",   dir: 1,  val: r => r.netToPar },
+    { key: "gross", label: "Gross", dir: 1,  val: r => r.grossToPar },
+    { key: "pts",   label: "Pts",   dir: -1, val: r => r.pts },
+    { key: "putts", label: "Putts", dir: 1,  val: r => r.thru ? r.putts / r.thru : null, title: "Sorted by putts per hole" },
+    { key: "fir",   label: "Fwy",   dir: -1, val: r => r.firOpp ? r.fir / r.firOpp : null, title: "Fairways hit / par 4s played" },
+    { key: "gir",   label: "GIR",   dir: -1, val: r => r.thru ? r.gir / r.thru : null, title: "Greens in regulation / holes played" }
+  ];
+
+  function renderBoard(flashIds = []) {
+    const rows = standings();
+    // Show all ghosts as one row: they share the same locked score and points
+    const ghosts = rows.filter(r => r.ghost);
+    const shown = [];
+    rows.forEach(r => {
+      if (!r.ghost) shown.push(r);
+      else if (r === ghosts[0]) shown.push({ ...r, pl: { id: "ghosts", team: null, group: false }, count: ghosts.length });
+    });
+    const col = COLS.find(c => c.key === state.sort);
+    if (state.sort !== "net") {
+      shown.sort((a, b) => {
+        const va = a.ghost ? null : col.val(a), vb = b.ghost ? null : col.val(b);
+        if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+        return (va - vb) * col.dir * state.dir || a.netToPar - b.netToPar;
+      });
+    } else if (state.dir === -1) shown.reverse();
+    const arrow = k => state.sort === k ? (state.dir * COLS.find(c => c.key === k).dir === 1 ? " ▲" : " ▼") : "";
+    let html = `<table class="lbt"><thead><tr><th class="stick">Pos · Player</th>` +
+      COLS.map(c => `<th aria-sort="${state.sort === c.key ? (state.dir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${c.key}"${c.title ? ` title="${c.title}"` : ""}>${c.label}${arrow(c.key)}</button></th>`).join("") +
+      `</tr></thead><tbody>`;
+    shown.forEach(r => {
+      const fin = r.thru === 9;
+      const hot = k => state.sort === k ? " hot" : "";
+      html += `<tr class="${r.pl.group ? "mine" : ""}${r.ghost ? " isghost" : ""}${flashIds.includes(r.pl.id) ? " flash" : ""}">
+        <td class="stick"><div class="pp"><span class="pos">${r.tied ? "T" : ""}${r.pos}</span><span class="who"><b>${r.ghost ? `Ghosts (${r.count})` : r.pl.name + (r.pl.you ? " (you)" : "")}</b><small>${r.ghost ? "Locked 36 net" : TEAMS[r.pl.team]}</small></span></div></td>
+        <td class="thru${fin && !r.ghost ? " f" : ""}${hot("thru")}">${r.ghost ? LOCK : (fin ? "F" : r.thru)}</td>
+        <td class="topar ${cls(r.netToPar)}${hot("net")}">${fmtToPar(r.netToPar)}</td>
+        <td class="gr ${r.grossToPar == null ? "" : cls(r.grossToPar)}${hot("gross")}">${r.grossToPar == null ? "–" : fmtToPar(r.grossToPar)}</td>
+        <td class="tot2${fin ? "" : " prov"}${hot("pts")}">${fmtPts(r.pts)}${r.ghost ? '<small class="each">each</small>' : ""}</td>
+        <td class="st${hot("putts")}">${r.ghost ? "–" : r.putts}</td>
+        <td class="st${hot("fir")}">${r.ghost ? "–" : `${r.fir}<small>/${r.firOpp}</small>`}</td>
+        <td class="st${hot("gir")}">${r.ghost ? "–" : `${r.gir}<small>/${r.thru}</small>`}</td>
+      </tr>`;
+    });
+    html += "</tbody></table>";
+    $("lb").innerHTML = html;
+    $("lb").querySelectorAll("button[data-sort]").forEach(btn => btn.onclick = () => {
+      const k = btn.dataset.sort;
+      if (state.sort === k) state.dir *= -1; else { state.sort = k; state.dir = 1; }
+      renderBoard();
+    });
+  }
+
+  function renderAll(flashIds) { renderHoles(); renderHole(); renderCard(); renderBoard(flashIds); }
+
+  let tick = 0;
+  function stamp() { tick = 0; $("upd").textContent = "Updated just now"; }
+  setInterval(() => { tick++; $("upd").textContent = `Updated ${tick} min ago`; }, 60000);
+
+  $("saveBtn").onclick = () => {
+    const i = state.hole;
+    group.forEach(pl => { state.scores[pl.id][i] = pending[pl.id]; });
+    group.forEach(pl => { const ps = pending.st[pl.id]; state.putts[pl.id][i] = ps.putts; state.fir[pl.id][i] = ps.fir; state.gir[pl.id][i] = ps.gir; });
+    state.saved.add(i);
+    PLAYERS.filter(p => !p.group).forEach(pl => {
+      const s = state.scores[pl.id]; const n = s.findIndex(v => v == null);
+      if (n >= 0) { s[n] = pl.s[n]; fillStats(pl, n); }
+    });
+    $("toast").textContent = `Hole ${i + 1} saved. In the real app this goes straight to GolfSoftware.`;
+    if (i < 8) state.hole = i + 1;
+    loadPending(); stamp();
+    renderAll(group.map(p => p.id));
+  };
+  $("prev").onclick = () => { if (state.hole > 0) { state.hole--; loadPending(); renderAll(); } };
+  $("finish").onclick = () => {
+    PLAYERS.forEach(pl => { state.scores[pl.id] = pl.s.slice(); for (let i = 0; i < 9; i++) if (!pl.group || state.putts[pl.id][i] == null) fillStats(pl, i); });
+    COURSE.par.forEach((_, i) => state.saved.add(i));
+    loadPending(); stamp();
+    $("toast").textContent = "Everyone's real Aug 25 scores are in. Points are now final.";
+    renderAll(PLAYERS.map(p => p.id));
+  };
+
+  $("fieldN").textContent = FIELD;
+  $("topPts").textContent = SETUP.fieldPoints[0];
+  loadPending();
+  renderAll();
+})();
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  // Sign-in (prototype: no real check; real app calls GolfSoftware Player/Signin -> adminId,playerId,key)
+  let tryAs = "admin";
+  document.querySelectorAll("[data-as]").forEach(b => b.onclick = () => {
+    tryAs = b.dataset.as;
+    document.querySelectorAll("[data-as]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  });
+  const readSession = () => { try { return JSON.parse(localStorage.getItem("bcc-session")) || JSON.parse(sessionStorage.getItem("bcc-session")); } catch (e) { return null; } };
+  let session = readSession();
+  function applySession() {
+    $("signin").hidden = !!session;
+    document.body.classList.toggle("is-admin", !!(session && session.admin));
+    if (session) {
+      $("whoName").textContent = session.name;
+      $("whoRole").textContent = session.admin ? "League admin" : "Player";
+    }
+    if (window.onSession) window.onSession();
+  }
+  $("siForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const u = $("siUser").value.trim(), pw = $("siPass").value;
+    if (!u) { $("siErr").textContent = "Enter your email or phone number."; return; }
+    if (pw.length < 8) { $("siErr").textContent = "Passwords are at least 8 characters."; return; }
+    $("siErr").textContent = "";
+    session = tryAs === "admin" ? { name: "Nitin", admin: true } : { name: "Demo player", admin: false };
+    try {
+      localStorage.removeItem("bcc-session"); sessionStorage.removeItem("bcc-session");
+      ($("siKeep").checked ? localStorage : sessionStorage).setItem("bcc-session", JSON.stringify(session));
+    } catch (err) {}
+    $("siPass").value = "";
+    applySession();
+  });
+  $("signOutBtn").onclick = () => {
+    try { localStorage.removeItem("bcc-session"); sessionStorage.removeItem("bcc-session"); } catch (e) {}
+    session = null; setMenu(false); applySession();
+  };
+
+  // Router: #home, #score, #gps
+  const views = { home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const menu = $("menu"), mb = $("menuBtn");
+  const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
+  mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };
+  document.addEventListener("click", e => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
+  menu.querySelectorAll("a").forEach(a => a.addEventListener("click", () => setMenu(false)));
+  function route() {
+    const k = (location.hash || "#home").slice(1);
+    const key = views[k] ? k : "home";
+    Object.entries(views).forEach(([n, el]) => { el.hidden = n !== key; });
+    document.querySelectorAll(".tabs a").forEach(a => a.setAttribute("aria-current", a.dataset.tab === key ? "page" : "false"));
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener("hashchange", route); route();
+  applySession();
+
+  // Season standings snapshot (GolfSoftware results, events 1-21)
+  const TEAM_ST = [["Beer Bombers",120,411.5],["Missing in Action",110,433.5],["Roger and Me",100,429.5],["Two Hearted Ail",100,401],["FIRGIRBIRGIR",95,455],["Bogey Knights",90,462],["Who's Your Caddie",85,402],["Weapons of Grass Destruction",80,295.5],["RahOleg in One",65,321.5],["Keepin' it 100",55,330.5]];
+  const PLAYER_ST_OLD = [["Wilson, Stephen",16,35.063,270],["Thoney, Roger",17,35.294,266.5],["Miller, Allen",18,35.111,264],["Hubbard, Sean",17,36.059,254],["Dixon, Tim",15,35.533,251.5],["Hessler, Josh",16,35.125,247],["Kumar, Nishir",15,35.867,245],["Woolum, Derek",16,36.063,238],["Wegrzyn, Jacob",18,35.944,234],["Ebbeler, Bob",14,35.429,234],["Edelman, Oleg",16,35.688,230],["Herring, Bill",14,34.714,228],["Richardson, Max",17,36.588,226],["Kumar, Nitin",17,36.176,216.5],["Wolery, Matt",9,36.0,202.5],["Mouch, Don",16,37.375,202.5],["Redmond, Kevin",15,36.867,199],["Dayal, Rahul",12,37.917,166],["Zurcher, Dan",15,37.933,155.5],["Zimmerman, Scott",11,39.0,129]];
+  // name, events, avg gross, avg net, points, avg fairways, avg greens, avg putts
+  const PLAYER_ST = [["Wilson, Stephen",16,41.563,35.063,270.0,1.25,2.188,15.938],["Thoney, Roger",17,40.294,35.294,266.5,1.941,2.706,16.353],["Miller, Allen",18,43.056,35.111,264.0,1.778,1.167,16.222],["Hubbard, Sean",17,53.941,36.059,254.0,0.588,0.529,18.059],["Dixon, Tim",15,48.467,35.533,251.5,0.733,0.867,18.067],["Hessler, Josh",16,49.125,35.125,247.0,1.25,0.688,16.0],["Kumar, Nishir",15,48.533,35.867,245.0,1.267,0.533,16.267],["Woolum, Derek",16,39.5,36.063,238.0,2.5,2.25,16.313],["Wegrzyn, Jacob",18,40.5,35.944,234.0,1.389,2.5,16.167],["Ebbeler, Bob",14,50.214,35.429,234.0,0.929,0.429,18.286],["Edelman, Oleg",16,46.438,35.688,230.0,1.063,0.438,16.25],["Herring, Bill",14,44.429,34.714,228.0,1.571,0.429,15.929],["Richardson, Max",17,46.412,36.588,226.0,1.353,0.882,16.294],["Kumar, Nitin",17,43.0,36.176,216.5,2.0,1.059,16.0],["Wolery, Matt",9,41.0,36.0,202.5,1.778,2.222,16.111],["Mouch, Don",16,43.75,37.375,202.5,2.125,1.563,16.938],["Redmond, Kevin",15,50.133,36.867,199.0,1.267,0.2,16.733],["Dayal, Rahul",12,50.333,37.917,166.0,0.833,1.0,16.25],["Zurcher, Dan",15,47.333,37.933,155.5,1.067,1.133,16.667],["Zimmerman, Scott",11,49.455,39.0,129.0,1.182,0.727,16.636]];
+  const f1 = v => Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
+  const posList = (arr, val) => arr.map((r, i) => { let p = i; while (p > 0 && val(arr[p - 1]) === val(r)) p--; return (arr.filter(x => val(x) === val(r)).length > 1 ? "T" : "") + (p + 1); });
+  const tp = posList(TEAM_ST, r => r[1]);
+  $("teamStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Team</th><th>Team pts</th><th>Player pts</th></tr></thead><tbody>` +
+    TEAM_ST.map((r, i) => `<tr${r[0] === "Beer Bombers" ? ' class="mine"' : ""}><td class="pos">${tp[i]}</td><td class="l"><b>${r[0]}</b></td><td class="big">${f1(r[1])}</td><td>${f1(r[2])}</td></tr>`).join("") + "</tbody>";
+  // Rules sheet scoring: absent weeks count 0, subs earn nothing for the absent player, 3 lowest weeks dropped
+  const STAND = [["Thoney, Roger",17,258.0,253.0],["Miller, Allen",18,264.0,251.0],["Hubbard, Sean",17,248.5,246.5],["Wilson, Stephen",16,248.0,246.5],["Hessler, Josh",16,233.5,231.5],["Wegrzyn, Jacob",18,234.0,226.5],["Dixon, Tim",15,213.5,213.5],["Ebbeler, Bob",14,210.0,210.0],["Edelman, Oleg",16,211.5,208.5],["Kumar, Nitin",17,212.5,204.5],["Richardson, Max",17,207.0,202.0],["Kumar, Nishir",15,199.5,199.5],["Woolum, Derek",16,199.0,196.0],["Herring, Bill",14,191.0,191.0],["Redmond, Kevin",15,171.5,171.5],["Mouch, Don",16,166.0,165.0],["Zurcher, Dan",15,138.0,138.0],["Wolery, Matt",9,129.5,129.5],["Dayal, Rahul",12,110.0,110.0],["Zimmerman, Scott",11,97.0,97.0]];
+  const pp = posList(STAND, r => r[3]);
+  let showAll = false;
+  function renderPlayers() {
+    const list = showAll ? STAND : STAND.slice(0, 10);
+    $("playerStand").innerHTML = `<thead><tr><th>Pos</th><th class="l">Player</th><th>Played</th><th>Total</th><th>Best 15</th></tr></thead><tbody>` +
+      list.map((r, i) => `<tr${r[0] === "Kumar, Nitin" ? ' class="mine"' : ""}><td class="pos">${pp[i]}</td><td class="l"><b>${r[0]}</b></td><td>${r[1]}</td><td>${f1(r[2])}</td><td class="big">${f1(r[3])}</td></tr>`).join("") + "</tbody>";
+    $("moreP").textContent = showAll ? "Show top 10" : "Show all 20";
+  }
+  $("moreP").onclick = () => { showAll = !showAll; renderPlayers(); };
+  renderPlayers();
+
+  // Season stats, sortable
+  const SCOLS = [["Gross",2,1],["Net",3,1],["Fwy",5,-1],["GIR",6,-1],["Putts",7,1]]; // label, index, best direction (1 = low is best)
+  let sSort = 3, sDir = 1, sAll = false;
+  function renderStats() {
+    const best = SCOLS.find(c => c[1] === sSort)[2];
+    const rows = PLAYER_ST.slice().sort((a, b) => (a[sSort] - b[sSort]) * best * sDir || a[0].localeCompare(b[0]));
+    const list = sAll ? rows : rows.slice(0, 10);
+    $("seasonStats").innerHTML = `<thead><tr><th class="l">Player</th>` + SCOLS.map(c => `<th aria-sort="${c[1] === sSort ? (sDir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-s="${c[1]}">${c[0]}${c[1] === sSort ? (sDir === 1 ? " ▲" : " ▼") : ""}</button></th>`).join("") + `</tr></thead><tbody>` +
+      list.map(r => `<tr${r[0] === "Kumar, Nitin" ? ' class="mine"' : ""}><td class="l"><b>${r[0]}</b></td>` + SCOLS.map(c => `<td class="${c[1] === sSort ? "hot" : ""}">${r[c[1]].toFixed(1)}</td>`).join("") + `</tr>`).join("") + "</tbody>";
+    $("seasonStats").querySelectorAll("button[data-s]").forEach(b => b.onclick = () => { const k = +b.dataset.s; if (k === sSort) sDir *= -1; else { sSort = k; sDir = 1; } renderStats(); });
+    $("moreS").textContent = sAll ? "Show top 10" : "Show all 20";
+  }
+  $("moreS").onclick = () => { sAll = !sAll; renderStats(); };
+  renderStats();
+
+  const HIGH = [["Low gross","36","Mouch, Don"],["Low net","29","Mouch, Don"],["Most birdies","2","Thoney, Roger"],["Fewest putts","14","Kumar, Nishir · Herring, Bill · Edelman, Oleg"]];
+
+const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["Wegrzyn, Jacob",40.0,36.0,25.0,3.0,1.0,16.0],["Wolery, Matt",42.0,37.0,24.0,0.0,0.0,15.0],["Wilson, Stephen",45.0,38.0,23.0,1.0,1.0,16.0],["Mouch, Don",45.0,39.0,21.5,1.0,1.0,14.0],["Kumar, Nishir",53.0,39.0,21.5,2.0,0.0,16.0],["Thoney, Roger",45.0,40.0,19.0,3.0,1.0,15.0],["Kumar, Shyel",49.0,40.0,19.0,0.0,0.0,16.0],["Woolum, Derek",44.0,41.0,15.5,0.0,1.0,17.0],["Hessler, Josh",55.0,41.0,15.5,0.0,0.0,16.0],["Zimmerman, Scott",49.0,40.0,14.0,0.0,0.0,16.0],["Miller, Allen",48.0,41.0,13.0,2.0,1.0,17.0],["Redmond, Kevin",53.0,41.0,13.0,0.0,0.0,18.0],["Kumar, Nitin",48.0,42.0,6.5,2.0,1.0,16.0],["Richardson, Max",50.0,42.0,6.5,0.0,1.0,17.0],["Edelman, Oleg",52.0,42.0,6.5,0.0,0.0,14.0],["Ebbeler, Bob",55.0,42.0,6.5,1.0,1.0,22.0],["Zurcher, Dan",53.0,45.0,4.0,1.0,0.0,20.0],["Dayal, Rahul",58.0,47.0,3.0,1.0,0.0,14.0],["Dixon, Tim",55.0,55.0,2.0,2.0,0.0,16.0],["Hubbard, Sean",61.0,61.0,1.0,0.0,0.0,12.0]],"t":{"Missing in Action":[75.0,10.0,46.5],"Weapons of Grass Destruction":[76.0,10.0,45.5],"Roger and Me":[81.0,10.0,32.0],"Keepin' it 100":[81.0,0,29.5],"FIRGIRBIRGIR":[80.0,10.0,29.5],"Beer Bombers":[83.0,0,22.0],"Who's Your Caddie":[86.0,0,17.0],"RahOleg in One":[89.0,0,9.5],"Two Hearted Ail":[82.0,10.0,6.5],"Bogey Knights":[116.0,0,3.0]},"m":[["Two Hearted Ail","Beer Bombers"],["Who's Your Caddie","Roger and Me"],["Weapons of Grass Destruction","Bogey Knights"],["Keepin' it 100","FIRGIRBIRGIR"],["Missing in Action","RahOleg in One"]]},{"e":2,"d":"4/28/2026","c":"Back","note":"","rain":false,"p":[["Dixon, Tim",48.0,26.0,25.0,0.0,2.0,23.0],["Hubbard, Sean",56.0,28.0,24.0,0.0,1.0,20.0],["Mouch, Don",39.0,33.0,23.0,1.0,2.0,16.0],["Thoney, Roger",39.0,34.0,21.5,2.0,1.0,15.0],["Miller, Allen",42.0,34.0,21.5,1.0,1.0,16.0],["Wegrzyn, Jacob",40.0,35.0,18.5,0.0,3.0,17.0],["Kumar, Shyel",44.0,35.0,18.5,0.0,0.0,17.0],["Ebbeler, Bob",49.0,35.0,18.5,3.0,0.0,18.0],["Hessler, Josh",50.0,35.0,13.5,2.0,0.0,16.0],["Kumar, Nitin",43.0,37.0,13.0,1.0,1.0,16.0],["Wilson, Stephen",43.0,36.0,11.0,3.0,3.0,16.0],["Redmond, Kevin",50.0,37.0,8.0,1.0,0.0,17.0],["Woolum, Derek",43.0,39.0,5.0,3.0,3.0,20.0],["Wolery, Matt",45.0,40.0,4.0,1.0,2.0,17.0],["Richardson, Max",52.0,43.0,3.0,1.0,0.0,18.0],["Zurcher, Dan",53.0,44.0,2.0,1.0,2.0,18.0],["Breech, Nik",56.0,56.0,1.0,0.0,0.0,18.0]],"t":{"Bogey Knights":[54.0,10.0,49.0],"Roger and Me":[71.0,10.0,29.5],"Weapons of Grass Destruction":[73.0,0,27.0],"Who's Your Caddie":[78.0,0,23.5],"Two Hearted Ail":[72.0,10.0,18.5],"Missing in Action":[72.0,10.0,18.5],"Beer Bombers":[76.0,10.0,18.0],"FIRGIRBIRGIR":[79.0,0,14.0],"Keepin' it 100":[91.0,0,13.5],"RahOleg in One":[72.0,0,0]},"m":[["Two Hearted Ail","Weapons of Grass Destruction"],["Who's Your Caddie","Beer Bombers"],["Roger and Me","RahOleg in One"],["Keepin' it 100","Bogey Knights"],["Missing in Action","FIRGIRBIRGIR"]]},{"e":3,"d":"5/5/2026","c":"","note":"Rained out \u00b7 made up in event 19","rain":true,"p":[],"t":{"Two Hearted Ail":[null,0,0],"Who's Your Caddie":[null,0,0],"Roger and Me":[null,0,0],"Beer Bombers":[null,0,0],"Weapons of Grass Destruction":[null,0,0],"Keepin' it 100":[null,0,0],"Missing in Action":[null,0,0],"FIRGIRBIRGIR":[null,0,0],"Bogey Knights":[null,0,0],"RahOleg in One":[null,0,0]},"m":[["Two Hearted Ail","Keepin' it 100"],["Who's Your Caddie","Weapons of Grass Destruction"],["Roger and Me","Beer Bombers"],["Missing in Action","Bogey Knights"],["FIRGIRBIRGIR","RahOleg in One"]]},{"e":4,"d":"5/12/2026","c":"Back","note":"","rain":false,"p":[["Kumar, Shyel",37.0,28.0,24.5,0.0,4.0,17.0],["Owen, Nick",41.0,28.0,24.5,1.0,4.0,18.0],["Wilson, Stephen",40.0,33.0,23.0,1.0,3.0,17.0],["Thoney, Roger",39.0,34.0,21.0,0.0,2.0,15.0],["Hubbard, Sean",57.0,34.0,21.0,0.0,1.0,20.0],["Ebbeler, Bob",50.0,35.0,18.0,0.0,0.0,18.0],["Redmond, Kevin",47.0,34.0,16.0,1.0,1.0,19.0],["Herring, Bill",45.0,35.0,15.5,1.0,0.0,18.0],["Kumar, Nishir",49.0,35.0,15.5,2.0,1.0,18.0],["Hessler, Josh",51.0,36.0,15.5,3.0,1.0,17.0],["Kumar, Nitin",43.0,37.0,13.5,3.0,0.0,16.0],["Zurcher, Dan",47.0,38.0,12.0,2.0,2.0,18.0],["Mouch, Don",42.0,36.0,10.5,5.0,1.0,16.0],["Miller, Allen",44.0,37.0,8.5,3.0,1.0,17.0],["Dixon, Tim",54.0,39.0,6.0,0.0,0.0,18.0],["Woolum, Derek",44.0,40.0,4.5,2.0,0.0,18.0],["Richardson, Max",49.0,40.0,4.5,0.0,1.0,21.0],["Edelman, Oleg",51.0,41.0,3.0,2.0,1.0,20.0],["Wegrzyn, Jacob",47.0,42.0,2.0,0.0,2.0,18.0],["Zimmerman, Scott",56.0,47.0,1.0,0.0,0.0,17.0]],"t":{"Roger and Me":[68.0,0,37.0],"Two Hearted Ail":[70.0,10.0,33.5],"FIRGIRBIRGIR":[73.0,5.0,27.5],"Bogey Knights":[73.0,5.0,27.0],"Who's Your Caddie":[75.0,10.0,20.5],"Beer Bombers":[77.0,0,18.0],"Missing in Action":[77.0,0,17.5],"Keepin' it 100":[83.0,0,16.5],"Weapons of Grass Destruction":[64.0,10.0,10.5],"RahOleg in One":[69.0,10.0,3.0]},"m":[["Two Hearted Ail","Missing in Action"],["Who's Your Caddie","Keepin' it 100"],["Roger and Me","Weapons of Grass Destruction"],["Beer Bombers","RahOleg in One"],["FIRGIRBIRGIR","Bogey Knights"]]},{"e":5,"d":"5/19/2026","c":"Front","note":"","rain":false,"p":[["Hubbard, Sean",55.0,32.0,25.0,0.0,1.0,20.0],["Kumar, Shyel",41.0,34.0,23.5,0.0,0.0,15.0],["Ebbeler, Bob",49.0,34.0,23.5,2.0,1.0,18.0],["Wolery, Matt",40.0,35.0,21.5,2.0,0.0,13.0],["Thoney, Roger",40.0,35.0,21.5,3.0,2.0,15.0],["Wilson, Stephen",43.0,36.0,19.0,1.0,1.0,16.0],["Kumar, Nishir",50.0,36.0,19.0,2.0,0.0,14.0],["Woolum, Derek",41.0,37.0,15.0,2.0,3.0,18.0],["Redmond, Kevin",50.0,37.0,15.0,0.0,0.0,14.0],["Edelman, Oleg",46.0,36.0,14.0,1.0,1.0,16.0],["Zurcher, Dan",47.0,38.0,10.5,0.0,0.0,14.0],["Kumar, Nitin",43.0,37.0,10.0,3.0,0.0,14.0],["Dixon, Tim",52.0,37.0,10.0,0.0,0.0,18.0],["Zimmerman, Scott",48.0,38.0,5.5,3.0,2.0,16.0],["Richardson, Max",48.0,38.0,5.5,1.0,2.0,18.0],["Hessler, Josh",53.0,38.0,5.5,0.0,0.0,13.0],["Miller, Allen",48.0,41.0,3.0,1.0,0.0,16.0],["Wegrzyn, Jacob",47.0,42.0,2.0,1.0,2.0,20.0],["Mouch, Don",51.0,45.0,1.0,1.0,0.0,16.0]],"t":{"Roger and Me":[72.0,10.0,36.5],"Bogey Knights":[69.0,10.0,35.0],"Beer Bombers":[74.0,10.0,25.0],"FIRGIRBIRGIR":[74.0,0,24.5],"Two Hearted Ail":[71.0,10.0,23.5],"Weapons of Grass Destruction":[80.0,0,22.5],"Missing in Action":[78.0,10.0,21.0],"RahOleg in One":[70.0,0,14.0],"Who's Your Caddie":[79.0,0,13.5],"Keepin' it 100":[76.0,0,11.0]},"m":[["Two Hearted Ail","FIRGIRBIRGIR"],["Who's Your Caddie","Missing in Action"],["Roger and Me","Keepin' it 100"],["Beer Bombers","Weapons of Grass Destruction"],["Bogey Knights","RahOleg in One"]]},{"e":6,"d":"5/26/2026","c":"Back","note":"","rain":false,"p":[["Hubbard, Sean",50.0,28.0,25.0,0.0,1.0,19.0],["Owen, Nick",37.0,29.0,23.5,3.0,2.0,15.0],["Richardson, Max",40.0,29.0,23.5,3.0,2.0,17.0],["Woolum, Derek",34.0,30.0,21.5,3.0,3.0,13.0],["Dixon, Tim",45.0,30.0,21.5,0.0,1.0,16.0],["Kumar, Shyel",40.0,33.0,17.0,4.0,4.0,20.0],["Wilson, Stephen",39.0,32.0,16.0,1.0,3.0,14.0],["Miller, Allen",40.0,32.0,16.0,4.0,1.0,15.0],["Wegrzyn, Jacob",39.0,34.0,15.5,3.0,2.0,12.0],["Zurcher, Dan",41.0,31.0,15.0,3.0,1.0,15.0],["Kumar, Nitin",42.0,35.0,13.5,2.0,1.0,15.0],["Edelman, Oleg",44.0,34.0,10.5,3.0,0.0,17.0],["Dayal, Rahul",49.0,38.0,10.5,2.0,1.0,15.0],["Ebbeler, Bob",50.0,35.0,8.5,2.0,0.0,19.0],["Hessler, Josh",51.0,36.0,7.0,0.0,1.0,15.0],["Herring, Bill",48.0,38.0,5.5,1.0,0.0,18.0],["Thoney, Roger",44.0,39.0,4.0,1.0,3.0,20.0],["Redmond, Kevin",54.0,41.0,3.0,1.0,0.0,15.0],["Mouch, Don",48.0,42.0,2.0,3.0,2.0,21.0],["Browner, Bryan",46.0,46.0,1.0,3.0,1.0,18.0]],"t":{"Bogey Knights":[58.0,10.0,46.5],"FIRGIRBIRGIR":[61.0,10.0,39.5],"Beer Bombers":[65.0,10.0,35.0],"Who's Your Caddie":[63.0,0,31.0],"RahOleg in One":[72.0,0,21.0],"Missing in Action":[67.0,10.0,15.5],"Two Hearted Ail":[73.0,0,14.0],"Roger and Me":[80.0,0,7.0],"Keepin' it 100":[82.0,0,7.0],"Weapons of Grass Destruction":[71.0,10.0,2.0]},"m":[["Two Hearted Ail","Bogey Knights"],["Who's Your Caddie","FIRGIRBIRGIR"],["Roger and Me","Missing in Action"],["Beer Bombers","Keepin' it 100"],["Weapons of Grass Destruction","RahOleg in One"]]},{"e":7,"d":"6/2/2026","c":"Front","note":"","rain":false,"p":[["Granger, Alex",39.0,31.0,25.0,1.0,2.0,14.0],["Ebbeler, Bob",48.0,33.0,24.0,0.0,1.0,16.0],["Richardson, Max",45.0,35.0,22.0,2.0,0.0,12.0],["Wilson, Stephen",43.0,36.0,19.0,2.0,2.0,15.0],["Kumar, Nitin",43.0,36.0,19.0,2.0,1.0,16.0],["Miller, Allen",44.0,36.0,19.0,1.0,0.0,16.0],["Edelman, Oleg",46.0,35.0,17.0,0.0,0.0,14.0],["Hessler, Josh",50.0,35.0,17.0,1.0,1.0,17.0],["Zimmerman, Scott",47.0,37.0,15.5,0.0,1.0,15.0],["Zurcher, Dan",47.0,38.0,12.0,1.0,0.0,16.0],["Redmond, Kevin",50.0,37.0,10.5,3.0,1.0,17.0],["Herring, Bill",48.0,38.0,7.0,1.0,1.0,19.0],["Dixon, Tim",50.0,38.0,7.0,0.0,1.0,17.0],["Woolum, Derek",43.0,40.0,3.5,1.0,1.0,15.0],["Wegrzyn, Jacob",45.0,40.0,3.5,1.0,2.0,17.0],["Mouch, Don",46.0,40.0,3.5,2.0,0.0,16.0],["Hubbard, Sean",57.0,40.0,3.5,1.0,1.0,20.0],["Thoney, Roger",46.0,41.0,1.0,1.0,2.0,20.0]],"t":{"FIRGIRBIRGIR":[71.0,10.0,41.0],"Keepin' it 100":[72.0,0,32.5],"Two Hearted Ail":[71.0,10.0,31.0],"Who's Your Caddie":[74.0,10.0,31.0],"Beer Bombers":[76.0,10.0,22.5],"RahOleg in One":[72.0,0,17.0],"Roger and Me":[78.0,0,11.5],"Bogey Knights":[78.0,0,10.5],"Weapons of Grass Destruction":[71.0,10.0,3.5],"Missing in Action":[77.0,0,3.5]},"m":[["Two Hearted Ail","RahOleg in One"],["Who's Your Caddie","Bogey Knights"],["Roger and Me","FIRGIRBIRGIR"],["Beer Bombers","Missing in Action"],["Weapons of Grass Destruction","Keepin' it 100"]]},{"e":8,"d":"6/9/2026","c":"Back","note":"","rain":false,"p":[["Kumar, Shyel",34.0,28.0,25.0,3.0,2.0,12.0],["Wegrzyn, Jacob",37.0,32.0,22.5,2.0,4.0,15.0],["Hubbard, Sean",51.0,32.0,22.5,1.0,0.0,17.0],["Herring, Bill",43.0,33.0,20.5,1.0,0.0,17.0],["Kumar, Nishir",47.0,33.0,20.5,1.0,0.0,17.0],["Long, Ryan",37.0,31.0,19.0,2.0,4.0,17.0],["Edelman, Oleg",45.0,34.0,18.0,0.0,1.0,16.0],["Dixon, Tim",47.0,34.0,18.0,3.0,1.0,18.0],["Kumar, Nitin",42.0,35.0,13.5,1.0,2.0,18.0],["Miller, Allen",43.0,35.0,13.5,2.0,2.0,19.0],["Mouch, Don",40.0,34.0,13.0,4.0,2.0,17.0],["Zimmerman, Scott",47.0,36.0,9.5,2.0,1.0,15.0],["Owen, Nick",39.0,35.0,8.5,1.0,4.0,17.0],["Zurcher, Dan",44.0,35.0,8.5,2.0,1.0,14.0],["Ebbeler, Bob",51.0,36.0,4.5,0.0,1.0,21.0],["Dayal, Rahul",49.0,37.0,3.0,2.0,2.0,18.0],["Redmond, Kevin",52.0,39.0,2.0,0.0,0.0,19.0],["Dayal, Sahil",50.0,50.0,1.0,0.0,2.0,21.0]],"t":{"Missing in Action":[65.0,10.0,43.0],"Bogey Knights":[66.0,10.0,40.5],"Two Hearted Ail":[69.0,10.0,25.0],"Who's Your Caddie":[70.0,0,22.0],"RahOleg in One":[71.0,5.0,21.0],"Beer Bombers":[63.0,10.0,13.5],"Weapons of Grass Destruction":[69.0,0,13.0],"Keepin' it 100":[71.0,5.0,9.5],"Roger and Me":[74.0,0,2.0],"FIRGIRBIRGIR":[81.0,0,0]},"m":[["Two Hearted Ail","Who's Your Caddie"],["Roger and Me","Bogey Knights"],["Beer Bombers","FIRGIRBIRGIR"],["Weapons of Grass Destruction","Missing in Action"],["Keepin' it 100","RahOleg in One"]]},{"e":9,"d":"6/16/2026","c":"Front","note":"","rain":false,"p":[["Hessler, Josh",44.0,29.0,25.0,2.0,1.0,12.0],["Thoney, Roger",38.0,33.0,22.0,4.0,2.0,15.0],["Kumar, Nitin",40.0,33.0,22.0,4.0,1.0,14.0],["Zimmerman, Scott",44.0,33.0,22.0,2.0,0.0,18.0],["Kumar, Nishir",43.0,30.0,19.0,1.0,0.0,17.0],["Kumar, Shyel",41.0,36.0,16.0,2.0,2.0,16.0],["Miller, Allen",44.0,36.0,16.0,0.0,1.0,17.0],["Zurcher, Dan",45.0,36.0,16.0,0.0,1.0,15.0],["Ebbeler, Bob",52.0,37.0,12.5,0.0,0.0,21.0],["Wegrzyn, Jacob",41.0,37.0,7.5,1.0,3.0,19.0],["Richardson, Max",47.0,37.0,7.5,1.0,0.0,16.0],["Edelman, Oleg",48.0,37.0,7.5,1.0,1.0,19.0],["Hubbard, Sean",55.0,38.0,5.0,1.0,0.0,16.0],["Mouch, Don",45.0,39.0,3.5,1.0,2.0,16.0],["Redmond, Kevin",52.0,39.0,3.5,3.0,0.0,18.0],["Dayal, Rahul",58.0,45.0,2.0,2.0,1.0,18.0],["Niehaus, Alex",47.0,47.0,1.0,1.0,1.0,19.0]],"t":{"Keepin' it 100":[62.0,10.0,47.0],"Who's Your Caddie":[72.0,10.0,32.0],"Missing in Action":[67.0,0,26.5],"Roger and Me":[72.0,5.0,25.5],"Beer Bombers":[80.0,10.0,22.0],"Two Hearted Ail":[72.0,5.0,12.5],"RahOleg in One":[82.0,0,9.5],"FIRGIRBIRGIR":[72.0,10.0,7.5],"Bogey Knights":[73.0,0,5.0],"Weapons of Grass Destruction":[75.0,0,3.5]},"m":[["Two Hearted Ail","Roger and Me"],["Who's Your Caddie","RahOleg in One"],["Beer Bombers","Bogey Knights"],["Weapons of Grass Destruction","FIRGIRBIRGIR"],["Keepin' it 100","Missing in Action"]]},{"e":10,"d":"6/23/2026","c":"Back","note":"","rain":false,"p":[["Dayal, Sahil",43.0,29.0,25.0,1.0,1.0,19.0],["Kumar, Shyel",35.0,30.0,24.0,3.0,3.0,11.0],["Woolum, Derek",36.0,32.0,22.0,5.0,3.0,15.0],["Edelman, Oleg",43.0,32.0,22.0,0.0,0.0,14.0],["Miller, Allen",43.0,35.0,17.5,2.0,0.0,16.0],["Dixon, Tim",45.0,32.0,17.0,2.0,1.0,19.0],["Thoney, Roger",40.0,35.0,15.0,3.0,4.0,19.0],["Richardson, Max",46.0,36.0,12.5,1.0,0.0,18.0],["Herring, Bill",46.0,36.0,12.5,1.0,1.0,16.0],["Hubbard, Sean",52.0,35.0,12.5,0.0,0.0,15.0],["Wegrzyn, Jacob",40.0,36.0,10.0,2.0,2.0,15.0],["Dayal, Rahul",49.0,36.0,10.0,0.0,1.0,17.0],["Wilson, Stephen",44.0,37.0,4.0,1.0,2.0,14.0],["Kumar, Nitin",44.0,37.0,4.0,2.0,1.0,18.0],["Redmond, Kevin",50.0,37.0,4.0,1.0,0.0,17.0],["Hessler, Josh",52.0,38.0,2.0,1.0,0.0,15.0],["Kumar, Nishir",53.0,40.0,1.0,1.0,1.0,17.0]],"t":{"RahOleg in One":[68.0,10.0,32.0],"Bogey Knights":[67.0,10.0,29.5],"Beer Bombers":[69.0,10.0,26.0],"Roger and Me":[72.0,0,19.0],"Who's Your Caddie":[70.0,10.0,17.5],"FIRGIRBIRGIR":[73.0,5.0,16.5],"Two Hearted Ail":[71.0,0,12.5],"Missing in Action":[76.0,0,11.0],"Keepin' it 100":[73.0,5.0,2.0],"Weapons of Grass Destruction":[59.0,0,0]},"m":[["Two Hearted Ail","Beer Bombers"],["Who's Your Caddie","Roger and Me"],["Weapons of Grass Destruction","Bogey Knights"],["Keepin' it 100","FIRGIRBIRGIR"],["Missing in Action","RahOleg in One"]]},{"e":11,"d":"6/30/2026","c":"Front","note":"","rain":false,"p":[["Niehaus, Alex",44.0,30.0,25.0,2.0,4.0,20.0],["Richardson, Max",43.0,33.0,23.5,2.0,2.0,16.0],["Herring, Bill",43.0,33.0,23.5,1.0,0.0,16.0],["Kumar, Nishir",47.0,34.0,21.0,2.0,1.0,17.0],["Hessler, Josh",48.0,34.0,21.0,1.0,0.0,14.0],["Woolum, Derek",38.0,35.0,18.0,1.0,3.0,16.0],["Kumar, Nitin",42.0,35.0,18.0,1.0,3.0,18.0],["Thoney, Roger",39.0,34.0,16.0,3.0,4.0,18.0],["Wegrzyn, Jacob",39.0,35.0,13.0,1.0,1.0,14.0],["Dixon, Tim",52.0,40.0,11.0,0.0,0.0,18.0],["Miller, Allen",45.0,37.0,9.0,2.0,1.0,17.0],["Wilson, Stephen",48.0,41.0,4.5,0.0,1.0,20.0],["Dayal, Rahul",54.0,41.0,4.5,0.0,0.0,16.0],["Leemhuis, Thomas",51.0,44.0,2.5,0.0,0.0,20.0],["Zimmerman, Scott",55.0,44.0,2.5,1.0,1.0,21.0],["Hubbard, Sean",63.0,45.0,1.0,0.0,0.0,22.0]],"t":{"Beer Bombers":[70.0,10.0,36.0],"Missing in Action":[69.0,10.0,34.0],"FIRGIRBIRGIR":[74.0,0,28.0],"Two Hearted Ail":[70.0,10.0,23.5],"Keepin' it 100":[78.0,10.0,23.5],"Roger and Me":[71.0,5.0,16.0],"Bogey Knights":[85.0,0,12.0],"Who's Your Caddie":[81.0,0,9.0],"RahOleg in One":[71.0,5.0,4.5],"Weapons of Grass Destruction":[74.0,0,0]},"m":[["Two Hearted Ail","Weapons of Grass Destruction"],["Who's Your Caddie","Beer Bombers"],["Roger and Me","RahOleg in One"],["Keepin' it 100","Bogey Knights"],["Missing in Action","FIRGIRBIRGIR"]]},{"e":12,"d":"7/7/2026","c":"Back","note":"","rain":false,"p":[["Thoney, Roger",34.0,29.0,24.0,1.0,6.0,16.0],["Hubbard, Sean",48.0,30.0,22.0,2.0,1.0,17.0],["Wilson, Stephen",36.0,29.0,21.5,2.0,5.0,17.0],["Dayal, Rahul",42.0,29.0,21.5,1.0,1.0,14.0],["Wolery, Matt",36.0,31.0,20.0,4.0,2.0,13.0],["Zimmerman, Scott",42.0,31.0,20.0,3.0,1.0,14.0],["Hessler, Josh",46.0,32.0,18.0,2.0,2.0,18.0],["Wegrzyn, Jacob",37.0,33.0,16.0,2.0,5.0,17.0],["Edelman, Oleg",44.0,33.0,16.0,4.0,1.0,19.0],["Kumar, Nishir",44.0,31.0,15.0,3.0,0.0,16.0],["Woolum, Derek",36.0,33.0,11.0,3.0,3.0,15.0],["Mouch, Don",43.0,37.0,8.0,1.0,1.0,18.0],["Miller, Allen",43.0,35.0,6.0,0.0,0.0,16.0],["Herring, Bill",45.0,35.0,6.0,2.0,0.0,16.0],["Dixon, Tim",48.0,35.0,6.0,1.0,0.0,17.0],["Richardson, Max",46.0,36.0,4.0,2.0,1.0,16.0],["Niehaus, Alex",49.0,38.0,2.0,2.0,1.0,18.0],["Zurcher, Dan",48.0,39.0,1.0,1.0,1.0,18.0]],"t":{"Keepin' it 100":[63.0,10.0,38.0],"RahOleg in One":[62.0,10.0,37.5],"Missing in Action":[64.0,10.0,31.0],"Weapons of Grass Destruction":[68.0,10.0,28.0],"Bogey Knights":[65.0,0,28.0],"FIRGIRBIRGIR":[65.0,0,25.5],"Roger and Me":[63.0,10.0,24.0],"Beer Bombers":[71.0,0,11.0],"Who's Your Caddie":[74.0,0,7.0],"Two Hearted Ail":[69.0,0,6.0]},"m":[["Two Hearted Ail","Keepin' it 100"],["Who's Your Caddie","Weapons of Grass Destruction"],["Roger and Me","Beer Bombers"],["Missing in Action","Bogey Knights"],["FIRGIRBIRGIR","RahOleg in One"]]},{"e":13,"d":"7/14/2026","c":"Front","note":"","rain":false,"p":[["Miller, Allen",38.0,29.0,25.0,1.0,3.0,15.0],["Wilson, Stephen",39.0,32.0,23.5,1.0,2.0,16.0],["Kumar, Nitin",39.0,32.0,23.5,2.0,2.0,15.0],["Edelman, Oleg",45.0,34.0,19.5,2.0,0.0,16.0],["Dixon, Tim",47.0,34.0,19.5,0.0,0.0,18.0],["Wegrzyn, Jacob",38.0,34.0,17.0,1.0,3.0,15.0],["Herring, Bill",44.0,34.0,17.0,2.0,1.0,16.0],["Hubbard, Sean",50.0,33.0,17.0,0.0,1.0,20.0],["Wolery, Matt",40.0,35.0,16.5,1.0,4.0,19.0],["Kumar, Nishir",47.0,35.0,16.5,1.0,0.0,17.0],["Zurcher, Dan",46.0,37.0,13.5,1.0,0.0,16.0],["Woolum, Derek",40.0,37.0,8.5,3.0,0.0,16.0],["Ebbeler, Bob",52.0,37.0,8.5,2.0,0.0,17.0],["Thoney, Roger",43.0,38.0,5.0,1.0,2.0,19.0],["Zimmerman, Scott",49.0,38.0,5.0,0.0,1.0,17.0],["Breech, Nik",61.0,38.0,5.0,0.0,0.0,15.0],["Mouch, Don",48.0,42.0,4.5,1.0,0.0,16.0],["Redmond, Kevin",55.0,42.0,4.5,1.0,0.0,19.0],["Richardson, Max",52.0,42.0,2.0,2.0,1.0,11.0]],"t":{"Who's Your Caddie":[66.0,10.0,38.5],"Bogey Knights":[67.0,10.0,36.5],"Missing in Action":[69.0,10.0,33.5],"Beer Bombers":[69.0,10.0,32.0],"Two Hearted Ail":[71.0,0,25.5],"FIRGIRBIRGIR":[74.0,0,25.5],"Weapons of Grass Destruction":[77.0,10.0,21.0],"RahOleg in One":[71.0,0,19.5],"Roger and Me":[80.0,0,9.5],"Keepin' it 100":[76.0,0,5.0]},"m":[["Two Hearted Ail","Missing in Action"],["Who's Your Caddie","Keepin' it 100"],["Roger and Me","Weapons of Grass Destruction"],["Beer Bombers","RahOleg in One"],["FIRGIRBIRGIR","Bogey Knights"]]},{"e":14,"d":"7/21/2026","c":"","note":"Rained out \u00b7 made up in event 20","rain":true,"p":[],"t":{"Two Hearted Ail":[null,0,0],"Who's Your Caddie":[null,0,0],"Roger and Me":[null,0,0],"Beer Bombers":[null,0,0],"Weapons of Grass Destruction":[null,0,0],"Keepin' it 100":[null,0,0],"Missing in Action":[null,0,0],"FIRGIRBIRGIR":[null,0,0],"Bogey Knights":[null,0,0],"RahOleg in One":[null,0,0]},"m":[["Two Hearted Ail","FIRGIRBIRGIR"],["Who's Your Caddie","Missing in Action"],["Roger and Me","Keepin' it 100"],["Beer Bombers","Weapons of Grass Destruction"],["Bogey Knights","RahOleg in One"]]},{"e":15,"d":"7/28/2026","c":"Front","note":"","rain":false,"p":[["Herring, Bill",43.0,33.0,25.0,0.0,0.0,13.0],["Woolum, Derek",37.0,34.0,23.5,4.0,2.0,14.0],["Hessler, Josh",47.0,34.0,23.5,1.0,0.0,17.0],["Ebbeler, Bob",50.0,35.0,22.0,1.0,1.0,19.0],["Edelman, Oleg",47.0,36.0,19.5,1.0,0.0,18.0],["Redmond, Kevin",50.0,36.0,19.5,2.0,0.0,17.0],["Miller, Allen",44.0,36.0,17.0,0.0,1.0,16.0],["Richardson, Max",46.0,36.0,17.0,3.0,1.0,17.0],["McCormick, Blake",40.0,37.0,12.5,0.0,1.0,14.0],["Wegrzyn, Jacob",41.0,37.0,12.5,4.0,2.0,16.0],["Thoney, Roger",42.0,37.0,12.5,2.0,2.0,15.0],["Mouch, Don",44.0,37.0,12.5,1.0,3.0,19.0],["Wolery, Matt",42.0,37.0,10.0,3.0,1.0,16.0],["Zurcher, Dan",49.0,40.0,8.0,0.0,1.0,18.0],["Kumar, Nitin",45.0,38.0,5.5,1.0,0.0,17.0],["Wilson, Stephen",48.0,42.0,1.5,1.0,0.0,15.0],["Kumar, Nishir",54.0,42.0,1.5,0.0,0.0,18.0]],"t":{"Two Hearted Ail":[68.0,10.0,47.0],"Roger and Me":[73.0,10.0,32.0],"Beer Bombers":[72.0,5.0,29.0],"Who's Your Caddie":[76.0,10.0,25.0],"Keepin' it 100":[72.0,5.0,23.5],"Weapons of Grass Destruction":[74.0,0,22.5],"RahOleg in One":[73.0,10.0,19.5],"FIRGIRBIRGIR":[78.0,0,18.5],"Missing in Action":[79.0,0,14.0],"Bogey Knights":[76.0,0,0]},"m":[["Two Hearted Ail","Bogey Knights"],["Who's Your Caddie","FIRGIRBIRGIR"],["Roger and Me","Missing in Action"],["Beer Bombers","Keepin' it 100"],["Weapons of Grass Destruction","RahOleg in One"]]},{"e":16,"d":"8/4/2026","c":"Back","note":"","rain":false,"p":[["Herring, Bill",38.0,28.0,25.0,3.0,0.0,12.0],["Kumar, Nishir",41.0,29.0,24.0,1.0,3.0,15.0],["Miller, Allen",39.0,30.0,23.0,2.0,3.0,16.0],["Wilson, Stephen",37.0,31.0,22.0,3.0,3.0,15.0],["Hessler, Josh",45.0,32.0,21.0,0.0,1.0,17.0],["Wegrzyn, Jacob",38.0,33.0,18.5,1.0,2.0,13.0],["Richardson, Max",43.0,33.0,18.5,0.0,1.0,17.0],["Ebbeler, Bob",49.0,34.0,16.0,1.0,0.0,16.0],["Hubbard, Sean",52.0,35.0,14.0,2.0,0.0,19.0],["Mouch, Don",40.0,33.0,13.5,2.0,2.0,15.0],["Dixon, Tim",46.0,33.0,13.5,0.0,2.0,18.0],["Wolery, Matt",41.0,36.0,12.0,2.0,5.0,18.0],["Thoney, Roger",40.0,35.0,9.0,2.0,3.0,17.0],["Redmond, Kevin",49.0,35.0,9.0,2.0,0.0,18.0],["Woolum, Derek",40.0,37.0,5.5,5.0,2.0,17.0],["Dayal, Rahul",49.0,37.0,5.5,0.0,1.0,15.0],["Kumar, Nitin",45.0,38.0,4.0,4.0,1.0,18.0],["Edelman, Oleg",50.0,39.0,3.0,0.0,0.0,16.0],["Zurcher, Dan",50.0,40.0,2.0,1.0,0.0,18.0],["Zimmerman, Scott",53.0,42.0,1.0,0.0,1.0,17.0]],"t":{"Missing in Action":[62.0,10.0,42.5],"Two Hearted Ail":[62.0,10.0,41.0],"FIRGIRBIRGIR":[64.0,10.0,40.5],"Bogey Knights":[68.0,10.0,27.5],"Weapons of Grass Destruction":[69.0,10.0,25.5],"Who's Your Caddie":[70.0,0,25.0],"Keepin' it 100":[74.0,0,22.0],"Roger and Me":[70.0,0,18.0],"Beer Bombers":[75.0,0,9.5],"RahOleg in One":[76.0,0,8.5]},"m":[["Two Hearted Ail","RahOleg in One"],["Who's Your Caddie","Bogey Knights"],["Roger and Me","FIRGIRBIRGIR"],["Beer Bombers","Missing in Action"],["Weapons of Grass Destruction","Keepin' it 100"]]},{"e":17,"d":"8/11/2026","c":"","note":"Rained out \u00b7 made up in event 21","rain":true,"p":[],"t":{"Two Hearted Ail":[null,0,0],"Who's Your Caddie":[null,0,0],"Roger and Me":[null,0,0],"Beer Bombers":[null,0,0],"Weapons of Grass Destruction":[null,0,0],"Keepin' it 100":[null,0,0],"Missing in Action":[null,0,0],"FIRGIRBIRGIR":[null,0,0],"Bogey Knights":[null,0,0],"RahOleg in One":[null,0,0]},"m":[["Two Hearted Ail","Who's Your Caddie"],["Roger and Me","Bogey Knights"],["Beer Bombers","FIRGIRBIRGIR"],["Weapons of Grass Destruction","Missing in Action"],["Keepin' it 100","RahOleg in One"]]},{"e":18,"d":"8/18/2026","c":"Back","note":"","rain":false,"p":[["Breech, Nik",51.0,28.0,25.0,0.0,2.0,19.0],["Wilson, Stephen",37.0,31.0,24.0,0.0,4.0,17.0],["Miller, Allen",40.0,32.0,22.5,4.0,3.0,17.0],["Kumar, Nitin",40.0,33.0,20.5,3.0,1.0,15.0],["Ebbeler, Bob",48.0,33.0,20.5,1.0,1.0,17.0],["Zurcher, Dan",44.0,34.0,18.5,1.0,3.0,18.0],["Herring, Bill",41.0,32.0,17.5,3.0,2.0,16.0],["Wegrzyn, Jacob",39.0,35.0,16.0,1.0,3.0,17.0],["Richardson, Max",45.0,35.0,16.0,2.0,1.0,16.0],["Edelman, Oleg",45.0,34.0,13.5,1.0,1.0,15.0],["Thoney, Roger",40.0,35.0,11.0,1.0,3.0,17.0],["Wolery, Matt",41.0,36.0,8.5,2.0,4.0,19.0],["Woolum, Derek",40.0,37.0,7.0,3.0,2.0,17.0],["Kumar, Nishir",50.0,39.0,7.0,0.0,0.0,18.0],["Hessler, Josh",52.0,39.0,7.0,2.0,1.0,19.0],["Mouch, Don",46.0,39.0,4.5,4.0,2.0,19.0],["Dayal, Rahul",52.0,39.0,4.5,0.0,1.0,17.0],["Hubbard, Sean",58.0,41.0,2.0,0.0,0.0,17.0],["Zimmerman, Scott",54.0,43.0,1.0,2.0,0.0,17.0]],"t":{"Who's Your Caddie":[66.0,10.0,41.0],"FIRGIRBIRGIR":[66.0,10.0,40.0],"Two Hearted Ail":[65.0,0,38.0],"Beer Bombers":[70.0,10.0,27.5],"Missing in Action":[74.0,10.0,23.0],"RahOleg in One":[73.0,0,18.0],"Weapons of Grass Destruction":[75.0,0,13.0],"Roger and Me":[63.0,10.0,11.0],"Keepin' it 100":[82.0,0,8.0],"Bogey Knights":[77.0,0,2.0]},"m":[["Two Hearted Ail","Roger and Me"],["Who's Your Caddie","RahOleg in One"],["Beer Bombers","Bogey Knights"],["Weapons of Grass Destruction","FIRGIRBIRGIR"],["Keepin' it 100","Missing in Action"]]},{"e":19,"d":"5/7/2026","c":"Front","note":"Make-up for event 3","rain":false,"p":[["Ebbeler, Bob",47.0,32.0,25.0,0.0,0.0,16.0],["Wilson, Stephen",39.0,33.0,23.5,2.0,1.0,15.0],["Miller, Allen",41.0,33.0,23.5,3.0,0.0,13.0],["Hessler, Josh",47.0,34.0,21.5,1.0,1.0,16.0],["Dixon, Tim",48.0,35.0,19.0,0.0,0.0,18.0],["Woolum, Derek",39.0,35.0,16.5,0.0,4.0,18.0],["Redmond, Kevin",49.0,35.0,16.5,2.0,0.0,13.0],["Breech, Nik",52.0,34.0,16.5,0.0,0.0,17.0],["Thoney, Roger",42.0,37.0,15.5,3.0,2.0,14.0],["Hubbard, Sean",54.0,37.0,15.5,0.0,0.0,17.0],["Wolery, Matt",42.0,37.0,13.0,1.0,2.0,15.0],["Edelman, Oleg",49.0,38.0,8.0,0.0,0.0,15.0],["Richardson, Max",49.0,39.0,7.0,1.0,0.0,16.0],["Dayal, Rahul",52.0,39.0,7.0,0.0,1.0,17.0],["Wegrzyn, Jacob",44.0,39.0,4.5,1.0,2.0,18.0],["Mouch, Don",46.0,39.0,4.5,2.0,0.0,18.0],["Kumar, Nitin",46.0,39.0,4.5,2.0,0.0,16.0],["Herring, Bill",48.0,39.0,4.5,1.0,0.0,16.0],["Kumar, Nishir",53.0,42.0,1.0,0.0,1.0,15.0]],"t":{"Bogey Knights":[72.0,10.0,34.5],"Roger and Me":[72.0,10.0,32.0],"FIRGIRBIRGIR":[72.0,10.0,30.5],"Two Hearted Ail":[71.0,0,29.5],"Who's Your Caddie":[70.0,10.0,23.5],"Keepin' it 100":[68.0,10.0,21.5],"Beer Bombers":[74.0,0,21.0],"Weapons of Grass Destruction":[76.0,0,17.5],"RahOleg in One":[77.0,0,15.0],"Missing in Action":[81.0,0,5.5]},"m":[["Two Hearted Ail","Keepin' it 100"],["Who's Your Caddie","Weapons of Grass Destruction"],["Roger and Me","Beer Bombers"],["Missing in Action","Bogey Knights"],["FIRGIRBIRGIR","RahOleg in One"]]},{"e":20,"d":"9/1/2026","c":"Back","note":"Make-up for event 14","rain":false,"p":[["Thoney, Roger",37.0,32.0,23.5,2.0,3.0,13.0],["Dixon, Tim",45.0,32.0,23.5,2.0,3.0,20.0],["Dayal, Rahul",45.0,32.0,23.5,1.0,1.0,16.0],["Redmond, Kevin",46.0,32.0,23.5,2.0,0.0,13.0],["Woolum, Derek",37.0,33.0,19.0,2.0,2.0,14.0],["Richardson, Max",43.0,33.0,19.0,2.0,1.0,16.0],["Mouch, Don",41.0,34.0,15.5,3.0,3.0,18.0],["Edelman, Oleg",44.0,33.0,14.0,1.0,1.0,17.0],["Hubbard, Sean",50.0,33.0,14.0,2.0,0.0,18.0],["Wegrzyn, Jacob",40.0,35.0,13.5,1.0,2.0,16.0],["Hessler, Josh",47.0,34.0,10.5,1.0,1.0,16.0],["Wilson, Stephen",42.0,37.0,9.5,1.0,2.0,15.0],["Herring, Bill",44.0,35.0,8.5,3.0,1.0,16.0],["Kumar, Nitin",43.0,36.0,6.5,1.0,2.0,15.0],["Niehaus, Alex",47.0,36.0,6.5,0.0,2.0,17.0],["Miller, Allen",45.0,37.0,4.5,2.0,1.0,17.0],["Zurcher, Dan",49.0,38.0,4.5,2.0,2.0,17.0],["Kumar, Nishir",50.0,38.0,4.5,1.0,0.0,15.0],["Ebbeler, Bob",53.0,38.0,2.0,0.0,0.0,18.0]],"t":{"Roger and Me":[64.0,10.0,47.0],"Bogey Knights":[65.0,5.0,37.5],"RahOleg in One":[65.0,5.0,37.5],"FIRGIRBIRGIR":[70.0,10.0,28.5],"Beer Bombers":[69.0,10.0,25.5],"Missing in Action":[73.0,10.0,18.0],"Weapons of Grass Destruction":[70.0,0,15.5],"Two Hearted Ail":[73.0,0,10.5],"Keepin' it 100":[67.0,0,10.5],"Who's Your Caddie":[75.0,0,9.0]},"m":[["Two Hearted Ail","FIRGIRBIRGIR"],["Who's Your Caddie","Missing in Action"],["Roger and Me","Keepin' it 100"],["Beer Bombers","Weapons of Grass Destruction"],["Bogey Knights","RahOleg in One"]]},{"e":21,"d":"9/8/2026","c":"Back","note":"Make-up for event 17","rain":false,"p":[["Mouch, Don",36.0,29.0,25.0,2.0,4.0,16.0],["Redmond, Kevin",45.0,31.0,23.5,0.0,1.0,17.0],["Hubbard, Sean",48.0,31.0,23.5,1.0,2.0,18.0],["Edelman, Oleg",44.0,33.0,19.5,1.0,0.0,14.0],["Wegrzyn, Jacob",37.0,32.0,16.5,0.0,4.0,16.0],["Thoney, Roger",37.0,32.0,16.5,1.0,4.0,15.0],["Kumar, Nitin",43.0,35.0,15.0,0.0,1.0,15.0],["Richardson, Max",45.0,35.0,15.0,0.0,1.0,15.0],["Dayal, Rahul",47.0,35.0,15.0,1.0,2.0,18.0],["Dixon, Tim",45.0,33.0,14.5,1.0,2.0,17.0],["Kumar, Nishir",47.0,35.0,12.5,2.0,1.0,14.0],["Zurcher, Dan",47.0,36.0,10.5,0.0,3.0,15.0],["Hessler, Josh",48.0,35.0,10.0,3.0,1.0,18.0],["Miller, Allen",44.0,36.0,5.5,2.0,2.0,16.0],["Woolum, Derek",40.0,37.0,3.0,3.0,4.0,18.0],["Wilson, Stephen",42.0,37.0,3.0,0.0,2.0,17.0],["Herring, Bill",46.0,37.0,3.0,2.0,0.0,14.0],["Breech, Nik",60.0,42.0,1.0,0.0,0.0,20.0]],"t":{"Roger and Me":[63.0,10.0,40.0],"Bogey Knights":[64.0,0,38.0],"RahOleg in One":[68.0,10.0,34.5],"Missing in Action":[67.0,0,29.0],"Weapons of Grass Destruction":[64.0,10.0,25.0],"Beer Bombers":[72.0,5.0,18.0],"FIRGIRBIRGIR":[72.0,5.0,18.0],"Who's Your Caddie":[72.0,5.0,16.0],"Keepin' it 100":[77.0,0,10.0],"Two Hearted Ail":[72.0,5.0,3.0]},"m":[["Two Hearted Ail","Who's Your Caddie"],["Roger and Me","Bogey Knights"],["Beer Bombers","FIRGIRBIRGIR"],["Weapons of Grass Destruction","Missing in Action"],["Keepin' it 100","RahOleg in One"]]}];
+  const PAIRS = {"1":[[61080000,"Who's Your Caddie","Roger and Me",[["Zurcher, Dan",8],["Miller, Allen",7]],[["Thoney, Roger",5],["Redmond, Kevin",12]]],[61560000,"Two Hearted Ail","Beer Bombers",[["(Sub) Kumar, Shyel",9],["Ebbeler, Bob",13]],[["Kumar, Nitin",6],["Woolum, Derek",3]]],[62040000,"Keepin' it 100","FIRGIRBIRGIR",[["Zimmerman, Scott",9],["Hessler, Josh",14]],[["Wilson, Stephen",7],["Richardson, Max",8]]],[62520000,"Weapons of Grass Destruction","Bogey Knights",[["Mouch, Don",6],["Wolery, Matt",5]],[["Hubbard, Sean",0],["Dixon, Tim",0]]],[63000000,"Missing in Action","RahOleg in One",[["Wegrzyn, Jacob",4],["Kumar, Nishir",14]],[["Dayal, Rahul",11],["Edelman, Oleg",10]]]],"2":[[61080000,"Keepin' it 100","Bogey Knights",[["(Sub) Breech, Nik",0],["Hessler, Josh",15]],[["Hubbard, Sean",28],["Dixon, Tim",22]]],[61560000,"Two Hearted Ail","Weapons of Grass Destruction",[["Ghost",10],["Ebbeler, Bob",14]],[["Mouch, Don",6],["Wolery, Matt",5]]],[62040000,"Who's Your Caddie","Beer Bombers",[["Zurcher, Dan",9],["Miller, Allen",8]],[["Kumar, Nitin",6],["Woolum, Derek",4]]],[62520000,"Roger and Me","RahOleg in One",[["Thoney, Roger",5],["Redmond, Kevin",13]],[["Ghost",10],["(Sub) Kumar, Shyel",9]]],[63000000,"Missing in Action","FIRGIRBIRGIR",[["Wegrzyn, Jacob",5],["Ghost",10]],[["Wilson, Stephen",7],["Richardson, Max",9]]]],"3":[[61200000,"Roger and Me","Beer Bombers",[["Redmond, Kevin",13],["Thoney, Roger",5]],[["Woolum, Derek",4],["Kumar, Nitin",6]]],[61680000,"FIRGIRBIRGIR","RahOleg in One",[["Wilson, Stephen",7],["Richardson, Max",9]],[["Edelman, Oleg",10],["Dayal, Rahul",11]]],[62160000,"Missing in Action","Bogey Knights",[["Kumar, Nishir",14],["Wegrzyn, Jacob",5]],[["Dixon, Tim",15],["Hubbard, Sean",23]]],[62640000,"Two Hearted Ail","Keepin' it 100",[["Ebbeler, Bob",15],["Herring, Bill",10]],[["Zimmerman, Scott",9],["Hessler, Josh",15]]],[63120000,"Who's Your Caddie","Weapons of Grass Destruction",[["Zurcher, Dan",9],["Miller, Allen",7]],[["Wolery, Matt",5],["Mouch, Don",6]]]],"4":[[61200000,"Beer Bombers","RahOleg in One",[["Kumar, Nitin",6],["Woolum, Derek",4]],[["Edelman, Oleg",10],["(Sub) Kumar, Shyel",9]]],[61680000,"Who's Your Caddie","Keepin' it 100",[["Zurcher, Dan",9],["Miller, Allen",7]],[["Zimmerman, Scott",9],["Hessler, Josh",15]]],[62160000,"Roger and Me","Weapons of Grass Destruction",[["Redmond, Kevin",13],["Thoney, Roger",5]],[["(Sub) Owen, Nick",13],["Mouch, Don",6]]],[62640000,"Two Hearted Ail","Missing in Action",[["Ebbeler, Bob",15],["Herring, Bill",10]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",14]]],[63120000,"FIRGIRBIRGIR","Bogey Knights",[["Wilson, Stephen",7],["Richardson, Max",9]],[["Dixon, Tim",15],["Hubbard, Sean",23]]]],"5":[[61200000,"Two Hearted Ail","FIRGIRBIRGIR",[["Ebbeler, Bob",15],["Ghost",10]],[["Richardson, Max",10],["Wilson, Stephen",7]]],[61680000,"Who's Your Caddie","Missing in Action",[["Zurcher, Dan",9],["Miller, Allen",7]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",14]]],[62160000,"Bogey Knights","RahOleg in One",[["Hubbard, Sean",23],["Dixon, Tim",15]],[["Edelman, Oleg",10],["(Sub) Kumar, Shyel",7]]],[62640000,"Beer Bombers","Weapons of Grass Destruction",[["Kumar, Nitin",6],["Woolum, Derek",4]],[["Wolery, Matt",5],["Mouch, Don",6]]],[63120000,"Roger and Me","Keepin' it 100",[["Redmond, Kevin",13],["Thoney, Roger",5]],[["Zimmerman, Scott",10],["Hessler, Josh",15]]]],"6":[[61200000,"Two Hearted Ail","Bogey Knights",[["Ebbeler, Bob",15],["Herring, Bill",10]],[["Dixon, Tim",15],["Hubbard, Sean",22]]],[61680000,"Weapons of Grass Destruction","RahOleg in One",[["Mouch, Don",6],["(Sub) Owen, Nick",8]],[["Dayal, Rahul",11],["Edelman, Oleg",10]]],[62160000,"Roger and Me","Missing in Action",[["Redmond, Kevin",13],["Thoney, Roger",5]],[["Wegrzyn, Jacob",5],["(Sub) Kumar, Shyel",7]]],[62640000,"Who's Your Caddie","FIRGIRBIRGIR",[["Zurcher, Dan",10],["Miller, Allen",8]],[["Richardson, Max",11],["Wilson, Stephen",7]]],[63120000,"Beer Bombers","Keepin' it 100",[["Kumar, Nitin",7],["Woolum, Derek",4]],[["(Sub) Browner, Bryan",0],["Hessler, Josh",15]]]],"7":[[61200000,"Who's Your Caddie","Bogey Knights",[["Zurcher, Dan",9],["Miller, Allen",8]],[["Hubbard, Sean",17],["Dixon, Tim",12]]],[61680000,"Roger and Me","FIRGIRBIRGIR",[["Thoney, Roger",5],["Redmond, Kevin",13]],[["Wilson, Stephen",7],["Richardson, Max",10]]],[62160000,"Two Hearted Ail","RahOleg in One",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Ghost",9],["Edelman, Oleg",11]]],[62640000,"Weapons of Grass Destruction","Keepin' it 100",[["Mouch, Don",6],["(Sub) Granger, Alex",8]],[["Zimmerman, Scott",10],["Hessler, Josh",15]]],[63120000,"Beer Bombers","Missing in Action",[["Kumar, Nitin",7],["Woolum, Derek",3]],[["Wegrzyn, Jacob",5],["Ghost",9]]]],"8":[[61200000,"Keepin' it 100","RahOleg in One",[["Zimmerman, Scott",11],["Ghost",9]],[["Dayal, Rahul",12],["Edelman, Oleg",11]]],[61680000,"Weapons of Grass Destruction","Missing in Action",[["Mouch, Don",6],["(Sub) Owen, Nick",4]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",14]]],[62160000,"Beer Bombers","FIRGIRBIRGIR",[["Kumar, Nitin",7],["(Sub) Kumar, Shyel",6]],[["(Sub) Dayal, Sahil",0],["(Sub) Long, Ryan",6]]],[62640000,"Two Hearted Ail","Who's Your Caddie",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Zurcher, Dan",9],["Miller, Allen",8]]],[63120000,"Roger and Me","Bogey Knights",[["Ghost",9],["Redmond, Kevin",13]],[["Hubbard, Sean",19],["Dixon, Tim",13]]]],"9":[[61080000,"Who's Your Caddie","RahOleg in One",[["Zurcher, Dan",9],["Miller, Allen",8]],[["Dayal, Rahul",13],["Edelman, Oleg",11]]],[61560000,"Weapons of Grass Destruction","FIRGIRBIRGIR",[["Mouch, Don",6],["(Sub) Kumar, Shyel",5]],[["Ghost",10],["Richardson, Max",10]]],[62040000,"Two Hearted Ail","Roger and Me",[["Ghost",10],["Ebbeler, Bob",15]],[["Thoney, Roger",5],["Redmond, Kevin",13]]],[62520000,"Beer Bombers","Bogey Knights",[["Kumar, Nitin",7],["(Sub) Niehaus, Alex",0]],[["Hubbard, Sean",17],["Ghost",10]]],[63000000,"Keepin' it 100","Missing in Action",[["Zimmerman, Scott",11],["Hessler, Josh",15]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",13]]]],"10":[[61200000,"Missing in Action","RahOleg in One",[["Wegrzyn, Jacob",4],["Kumar, Nishir",13]],[["Dayal, Rahul",13],["Edelman, Oleg",11]]],[61680000,"Two Hearted Ail","Beer Bombers",[["Herring, Bill",10],["Ghost",10]],[["Kumar, Nitin",7],["Woolum, Derek",4]]],[62160000,"Weapons of Grass Destruction","Bogey Knights",[["(Sub) Dayal, Sahil",14],["(Sub) Kumar, Shyel",5]],[["Hubbard, Sean",17],["Dixon, Tim",13]]],[62640000,"Keepin' it 100","FIRGIRBIRGIR",[["Ghost",10],["Hessler, Josh",14]],[["Wilson, Stephen",7],["Richardson, Max",10]]],[63120000,"Who's Your Caddie","Roger and Me",[["Ghost",10],["Miller, Allen",8]],[["Thoney, Roger",5],["Redmond, Kevin",13]]]],"11":[[61200000,"Who's Your Caddie","Beer Bombers",[["Miller, Allen",8],["(Sub) Leemhuis, Thomas",7]],[["Woolum, Derek",3],["Kumar, Nitin",7]]],[61680000,"Keepin' it 100","Bogey Knights",[["Zimmerman, Scott",11],["Hessler, Josh",14]],[["Dixon, Tim",12],["Hubbard, Sean",18]]],[62160000,"Missing in Action","FIRGIRBIRGIR",[["Wegrzyn, Jacob",4],["Kumar, Nishir",13]],[["Richardson, Max",10],["Wilson, Stephen",7]]],[62640000,"Roger and Me","RahOleg in One",[["Thoney, Roger",5],["Ghost",10]],[["(Sub) Niehaus, Alex",14],["Dayal, Rahul",13]]],[63120000,"Two Hearted Ail","Weapons of Grass Destruction",[["Herring, Bill",10],["Ghost",10]],[["Ghost",10],["Ghost",10]]]],"12":[[61200000,"Two Hearted Ail","Keepin' it 100",[["Herring, Bill",10],["Ghost",9]],[["Zimmerman, Scott",11],["Hessler, Josh",14]]],[61680000,"Who's Your Caddie","Weapons of Grass Destruction",[["Miller, Allen",8],["Zurcher, Dan",9]],[["Wolery, Matt",5],["Mouch, Don",6]]],[62160000,"Roger and Me","Beer Bombers",[["Thoney, Roger",5],["Ghost",9]],[["Woolum, Derek",3],["(Sub) Niehaus, Alex",11]]],[62640000,"Missing in Action","Bogey Knights",[["Wegrzyn, Jacob",4],["Kumar, Nishir",13]],[["Dixon, Tim",13],["Hubbard, Sean",18]]],[63120000,"FIRGIRBIRGIR","RahOleg in One",[["Richardson, Max",10],["Wilson, Stephen",7]],[["Edelman, Oleg",11],["Dayal, Rahul",13]]]],"13":[[61200000,"FIRGIRBIRGIR","Bogey Knights",[["Richardson, Max",10],["Wilson, Stephen",7]],[["Dixon, Tim",13],["Hubbard, Sean",17]]],[61680000,"Beer Bombers","RahOleg in One",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Edelman, Oleg",11],["Ghost",10]]],[62160000,"Two Hearted Ail","Missing in Action",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",12]]],[62640000,"Roger and Me","Weapons of Grass Destruction",[["Thoney, Roger",5],["Redmond, Kevin",13]],[["Wolery, Matt",5],["Mouch, Don",6]]],[63120000,"Who's Your Caddie","Keepin' it 100",[["Miller, Allen",9],["Zurcher, Dan",9]],[["Zimmerman, Scott",11],["(Sub) Breech, Nik",23]]]],"14":[[60720000,"Bogey Knights","RahOleg in One",[["Dixon, Tim",13],["Hubbard, Sean",17]],[["Edelman, Oleg",11],["Dayal, Rahul",12]]],[61200000,"Who's Your Caddie","Missing in Action",[["Miller, Allen",8],["Zurcher, Dan",9]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",12]]],[61680000,"Roger and Me","Keepin' it 100",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Zimmerman, Scott",11],["Hessler, Josh",13]]],[62640000,"Two Hearted Ail","FIRGIRBIRGIR",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Richardson, Max",10],["Wilson, Stephen",6]]],[63120000,"Beer Bombers","Weapons of Grass Destruction",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Wolery, Matt",5],["Mouch, Don",7]]]],"15":[[61200000,"Weapons of Grass Destruction","RahOleg in One",[["Wolery, Matt",5],["Mouch, Don",7]],[["Edelman, Oleg",11],["(Sub) McCormick, Blake",3]]],[61680000,"Roger and Me","Missing in Action",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",12]]],[62160000,"Who's Your Caddie","FIRGIRBIRGIR",[["Miller, Allen",8],["Zurcher, Dan",9]],[["Richardson, Max",10],["Wilson, Stephen",6]]],[62640000,"Beer Bombers","Keepin' it 100",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Ghost",8],["Hessler, Josh",13]]],[63120000,"Two Hearted Ail","Bogey Knights",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Ghost",8],["Ghost",8]]]],"16":[[61200000,"Roger and Me","FIRGIRBIRGIR",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Wilson, Stephen",6],["Richardson, Max",10]]],[61680000,"Beer Bombers","Missing in Action",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",12]]],[62160000,"Weapons of Grass Destruction","Keepin' it 100",[["Wolery, Matt",5],["Mouch, Don",7]],[["Zimmerman, Scott",11],["Hessler, Josh",13]]],[62640000,"Who's Your Caddie","Bogey Knights",[["Miller, Allen",9],["Zurcher, Dan",10]],[["Dixon, Tim",13],["Hubbard, Sean",17]]],[63120000,"Two Hearted Ail","RahOleg in One",[["Herring, Bill",10],["Ebbeler, Bob",15]],[["Edelman, Oleg",11],["Dayal, Rahul",12]]]],"17":[[61200000,"Weapons of Grass Destruction","Missing in Action",[["Wolery, Matt",5],["Mouch, Don",7]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",11]]],[61680000,"Roger and Me","Bogey Knights",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Dixon, Tim",13],["Hubbard, Sean",17]]],[62160000,"Two Hearted Ail","Who's Your Caddie",[["Herring, Bill",9],["Ebbeler, Bob",15]],[["Miller, Allen",8],["Zurcher, Dan",10]]],[62640000,"Beer Bombers","FIRGIRBIRGIR",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Richardson, Max",10],["Wilson, Stephen",6]]],[63120000,"Keepin' it 100","RahOleg in One",[["Zimmerman, Scott",11],["Hessler, Josh",13]],[["Edelman, Oleg",11],["Dayal, Rahul",13]]]],"18":[[61200000,"Two Hearted Ail","Roger and Me",[["Herring, Bill",9],["Ebbeler, Bob",15]],[["(Sub) Breech, Nik",23],["Thoney, Roger",5]]],[61680000,"Weapons of Grass Destruction","FIRGIRBIRGIR",[["Wolery, Matt",5],["Mouch, Don",7]],[["Richardson, Max",10],["Wilson, Stephen",6]]],[62160000,"Keepin' it 100","Missing in Action",[["Zimmerman, Scott",11],["Hessler, Josh",13]],[["Wegrzyn, Jacob",4],["Kumar, Nishir",11]]],[62640000,"Who's Your Caddie","RahOleg in One",[["Miller, Allen",8],["Zurcher, Dan",10]],[["Edelman, Oleg",11],["Dayal, Rahul",13]]],[63120000,"Beer Bombers","Bogey Knights",[["Woolum, Derek",3],["Kumar, Nitin",7]],[["Ghost",10],["Hubbard, Sean",17]]]],"19":[[61080000,"Roger and Me","Beer Bombers",[["Redmond, Kevin",14],["Thoney, Roger",5]],[["Woolum, Derek",4],["Kumar, Nitin",7]]],[61560000,"FIRGIRBIRGIR","RahOleg in One",[["Wilson, Stephen",6],["Richardson, Max",10]],[["Edelman, Oleg",11],["Dayal, Rahul",13]]],[62040000,"Missing in Action","Bogey Knights",[["Kumar, Nishir",11],["Wegrzyn, Jacob",5]],[["Dixon, Tim",13],["Hubbard, Sean",17]]],[62520000,"Who's Your Caddie","Weapons of Grass Destruction",[["Ghost",10],["Miller, Allen",8]],[["Wolery, Matt",5],["Mouch, Don",7]]],[63000000,"Two Hearted Ail","Keepin' it 100",[["Ebbeler, Bob",15],["Herring, Bill",9]],[["(Sub) Breech, Nik",18],["Hessler, Josh",13]]]],"20":[[61080000,"Bogey Knights","RahOleg in One",[["Dixon, Tim",13],["Hubbard, Sean",17]],[["Edelman, Oleg",11],["Dayal, Rahul",13]]],[61560000,"Who's Your Caddie","Missing in Action",[["Miller, Allen",8],["Zurcher, Dan",11]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",12]]],[62040000,"Roger and Me","Keepin' it 100",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Ghost",10],["Hessler, Josh",13]]],[62520000,"Two Hearted Ail","FIRGIRBIRGIR",[["Herring, Bill",9],["Ebbeler, Bob",15]],[["Richardson, Max",10],["Wilson, Stephen",5]]],[63000000,"Beer Bombers","Weapons of Grass Destruction",[["Woolum, Derek",4],["Kumar, Nitin",7]],[["(Sub) Niehaus, Alex",11],["Mouch, Don",7]]]],"21":[[61080000,"Weapons of Grass Destruction","Missing in Action",[["Mouch, Don",7],["Ghost",10]],[["Wegrzyn, Jacob",5],["Kumar, Nishir",12]]],[61560000,"Two Hearted Ail","Who's Your Caddie",[["Herring, Bill",9],["Ghost",10]],[["Zurcher, Dan",11],["Miller, Allen",8]]],[62040000,"Roger and Me","Bogey Knights",[["Thoney, Roger",5],["Redmond, Kevin",14]],[["Hubbard, Sean",17],["Dixon, Tim",12]]],[62520000,"Beer Bombers","FIRGIRBIRGIR",[["Kumar, Nitin",8],["Woolum, Derek",3]],[["Wilson, Stephen",5],["Richardson, Max",10]]],[63000000,"Keepin' it 100","RahOleg in One",[["(Sub) Breech, Nik",18],["Hessler, Josh",13]],[["Dayal, Rahul",12],["Edelman, Oleg",11]]]],"22":[[61200000,"Who's Your Caddie","Roger and Me",[["Zurcher, Dan",8],["Miller, Allen",7]],[["Thoney, Roger",5],["Ghost",0]]],[61680000,"Two Hearted Ail","Beer Bombers",[["Ghost",0],["Ebbeler, Bob",14]],[["Kumar, Nitin",6],["Woolum, Derek",2]]],[62160000,"Keepin' it 100","FIRGIRBIRGIR",[["Zimmerman, Scott",9],["Ghost",0]],[["Ghost",0],["Richardson, Max",8]]],[62640000,"Weapons of Grass Destruction","Bogey Knights",[["Ghost",0],["Wolery, Matt",3]],[["Ghost",0],["Dixon, Tim",10]]],[63120000,"Missing in Action","RahOleg in One",[["Wegrzyn, Jacob",3],["Kumar, Nishir",10]],[["Ghost",0],["Ghost",0]]]]};
+  const RINGER = {"gross":{"front":[["Woolum, Derek",4,3,4,4,3,3,4,3,4,32],["Thoney, Roger",5,3,4,3,3,3,4,3,5,33],["Wegrzyn, Jacob",4,3,4,4,4,3,4,3,4,33],["Kumar, Nitin",4,3,5,4,4,3,4,3,4,34],["Miller, Allen",4,3,4,5,4,3,4,2,5,34],["Wilson, Stephen",4,3,4,4,4,3,4,3,5,34],["Wolery, Matt",5,3,4,4,4,2,4,3,5,34],["Hessler, Josh",5,4,3,4,4,4,5,3,4,36],["Richardson, Max",4,3,5,5,5,3,5,3,4,37],["Ebbeler, Bob",5,3,4,5,4,3,6,3,5,38],["Edelman, Oleg",4,3,4,5,5,3,5,3,6,38],["Mouch, Don",5,3,4,5,5,3,6,3,4,38],["Zurcher, Dan",4,4,4,5,4,4,5,3,5,38],["Dixon, Tim",5,3,5,6,4,3,3,4,6,39],["Herring, Bill",5,4,4,4,5,4,5,3,5,39],["Kumar, Nishir",6,3,5,4,5,4,4,4,4,39],["Zimmerman, Scott",5,3,4,5,5,3,5,3,6,39],["Redmond, Kevin",5,3,5,5,6,3,6,3,5,41],["Hubbard, Sean",5,4,5,7,6,3,4,4,6,44],["Dayal, Rahul",6,3,5,7,6,5,6,4,6,48]],"back":[["Thoney, Roger",4,3,2,3,4,4,2,3,3,28],["Wilson, Stephen",3,4,2,4,4,4,2,2,3,28],["Woolum, Derek",3,3,3,4,4,4,3,2,4,30],["Wegrzyn, Jacob",4,3,3,4,4,4,3,3,3,31],["Mouch, Don",4,3,3,4,4,4,3,3,4,32],["Herring, Bill",4,3,3,4,4,4,3,4,4,33],["Miller, Allen",3,4,3,4,5,4,3,3,4,33],["Richardson, Max",5,4,3,3,4,4,3,3,4,33],["Wolery, Matt",5,4,3,4,4,4,3,3,3,33],["Zurcher, Dan",4,4,3,4,4,5,3,2,4,33],["Dayal, Rahul",4,4,3,4,5,4,2,3,5,34],["Edelman, Oleg",4,5,2,4,4,4,3,3,5,34],["Kumar, Nitin",4,5,3,4,4,4,3,3,4,34],["Dixon, Tim",4,4,3,4,5,4,3,3,5,35],["Hessler, Josh",5,4,3,4,4,4,3,3,5,35],["Kumar, Nishir",4,3,3,4,5,5,4,3,4,35],["Hubbard, Sean",4,3,4,4,5,5,3,4,5,37],["Ebbeler, Bob",4,5,3,3,6,5,4,4,5,39],["Zimmerman, Scott",4,5,4,4,4,5,5,3,5,39],["Redmond, Kevin",4,5,4,5,5,4,4,4,5,40]]},"net":{"front":[["Hessler, Josh",3,3,1,2,3,3,3,2,2,22],["Ebbeler, Bob",3,2,2,3,2,2,4,2,3,23],["Kumar, Nishir",4,2,4,2,3,3,2,3,2,25],["Miller, Allen",3,2,3,4,3,2,3,1,4,25],["Dixon, Tim",3,2,4,4,3,2,1,3,4,26],["Hubbard, Sean",4,2,3,4,4,1,2,2,4,26],["Edelman, Oleg",3,2,3,3,4,2,4,2,4,27],["Kumar, Nitin",3,3,4,3,3,2,3,3,3,27],["Redmond, Kevin",3,2,4,3,4,2,4,2,3,27],["Richardson, Max",3,2,4,3,4,2,4,2,3,27],["Wilson, Stephen",3,3,3,3,3,2,3,3,4,27],["Thoney, Roger",4,3,4,2,2,3,3,3,4,28],["Wegrzyn, Jacob",3,3,4,3,3,3,3,3,3,28],["Zimmerman, Scott",4,2,3,3,4,2,4,2,4,28],["Herring, Bill",4,3,3,2,4,3,4,2,4,29],["Wolery, Matt",4,3,4,3,3,2,3,3,4,29],["Woolum, Derek",3,3,4,3,3,3,4,3,3,29],["Zurcher, Dan",3,3,3,4,3,3,4,2,4,29],["Mouch, Don",4,3,3,4,4,2,5,3,3,31],["Dayal, Rahul",4,2,4,5,5,4,4,3,4,35]],"back":[["Hubbard, Sean",2,0,2,1,3,2,1,2,3,16],["Dixon, Tim",2,3,2,2,3,2,2,2,2,20],["Hessler, Josh",3,2,2,2,2,2,2,2,3,20],["Dayal, Rahul",3,3,2,2,3,2,1,2,3,21],["Kumar, Nishir",3,2,2,2,3,3,3,2,2,22],["Wilson, Stephen",2,3,2,3,3,3,2,2,2,22],["Edelman, Oleg",3,4,1,2,2,3,2,2,4,23],["Richardson, Max",4,3,2,2,2,3,2,2,3,23],["Thoney, Roger",3,3,2,2,3,3,2,3,2,23],["Zurcher, Dan",3,3,2,3,2,4,2,1,3,23],["Ebbeler, Bob",2,3,2,1,4,3,3,3,3,24],["Herring, Bill",3,2,2,3,3,3,2,3,3,24],["Miller, Allen",2,3,2,3,4,3,2,2,3,24],["Mouch, Don",3,2,2,3,3,3,3,3,3,25],["Redmond, Kevin",3,3,3,3,3,2,3,3,3,26],["Wegrzyn, Jacob",4,2,3,3,3,3,3,3,2,26],["Woolum, Derek",3,3,3,3,3,3,3,2,3,26],["Kumar, Nitin",3,4,2,3,3,3,3,3,3,27],["Wolery, Matt",5,3,3,3,3,3,3,3,2,28],["Zimmerman, Scott",3,4,3,2,2,4,4,2,4,28]]}};
+  const HCPS = [["Angelo, Tony",7.9,0],["Blust, Chad",6.02,0],["Breech, Nik",15.13,0],["Browner, Bryan",10.67,0],["Calvert, Alec",0.0,0],["Cooper, Jay",11.56,0],["Cooper, Sam",11.2,0],["Cox, David",21.57,0],["Dayal, Rahul",10.05,10],["Dayal, Sahil",10.13,0],["Dixon, Tim",9.88,9],["Ebbeler, Bob",13.57,1],["Edelman, Mary",0.0,0],["Edelman, Oleg",9.01,10],["Granger, Alex",4.23,0],["Herring, Bill",8.31,1],["Hessler, Josh",11.09,6],["Hubbard, Sean",13.79,9],["Kumar, Nishir",9.73,7],["Kumar, Nitin",5.95,4],["Kumar, Shyel",2.89,0],["Leemhuis, Thomas",6.29,0],["Long, Ryan",2.44,0],["McCormick, Blake",1.11,0],["Miller, Allen",6.89,2],["Moore, Dave",1.55,0],["Mosbacher, Marc",6.2,0],["Mouch, Dave",7.0,0],["Mouch, Don",5.04,5],["Niehaus, Alex",8.79,0],["Owen, Nick",2.44,0],["Price, Adam",7.9,0],["Redmond, Kevin",12.36,3],["Richardson, Max",7.64,8],["Srivastava, Vikas",10.78,0],["Thoney, Roger",4.7,3],["Ward, Kyle",9.68,0],["Webber, Jeffrey",6.08,0],["Wegrzyn, Jacob",3.34,7],["Weller, Rod",10.44,0],["Wilson, Stephen",3.56,8],["Wolery, Matt",3.44,5],["Woolum, Derek",1.98,4],["Zimmerman, Scott",8.7,6],["Zurcher, Dan",8.46,2]];
+  const TEAMS_H = {1:"Two Hearted Ail",2:"Who's Your Caddie",3:"Roger and Me",4:"Beer Bombers",5:"Weapons of Grass Destruction",6:"Keepin' it 100",7:"Missing in Action",8:"FIRGIRBIRGIR",9:"Bogey Knights",10:"RahOleg in One"};
+  const teeTime = ms => { const m = Math.round(ms / 60000), h = Math.floor(m / 60), mm = m % 60; return `${h > 12 ? h - 12 : h}:${String(mm).padStart(2, "0")}`; };
+  const plist = ps => ps.map(([n, h]) => `<span>${n === "Ghost" ? "Ghost" : n}${h != null && n !== "Ghost" ? ` <em>${h}</em>` : ""}</span>`).join("");
+  const MINE = "Beer Bombers";
+  function upcomingCards(e) {
+    return PAIRS[e].map(([t, a, b, pa, pb]) => `<div class="card trow2${a === MINE || b === MINE ? " mineM" : ""}"><div class="tt num">${teeTime(t)}<small>PM</small></div><div class="tm"><b>${a}</b><div class="pl">${plist(pa)}</div></div><div class="tm r"><b>${b}</b><div class="pl">${plist(pb)}</div></div></div>`).join("");
+  }
+  $("teeList").innerHTML = upcomingCards(22);
+
+
+  // Previous rounds
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const fd = d => { const [m, dd] = d.split("/"); return MON.at(+m - 1) + " " + +dd; };
+  const order = WEEKS.slice().sort((a, b) => { const t = w => Date.parse(w.d); return t(b) - t(a) || b.e - a.e; });
+  $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="22">Event 22 · Aug 25 · Front</option></optgroup>` +
+    `<optgroup label="Season boards"><option value="ringer-gross">Ringer (gross)</option><option value="ringer-net">Net Ringer</option></optgroup>` +
+    `<optgroup label="Played">` + order.map(w => `<option value="${w.e}">Event ${w.e} · ${fd(w.d)} · ${w.c || "—"}${w.rain ? " · rained out" : ""}</option>`).join("") + `</optgroup>`;
+  $("wkPick").value = "21";
+  const WCOLS = [["Pts",3,-1],["Gross",1,1],["Net",2,1],["Fwy",4,-1],["GIR",5,-1],["Putts",6,1]];
+  let wSort = 3, wDir = 1;
+  function renderWeek() {
+    const v = $("wkPick").value;
+    const show = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; $("ringer").hidden = k !== "ring"; };
+    if (v.startsWith("ringer")) { show("ring"); ringKind = v === "ringer-net" ? "net" : "gross"; $("wkInfo").textContent = ringKind === "net" ? "Each player's best net score on every hole, events 1 to 21" : "Each player's best gross score on every hole, events 1 to 21"; renderRinger(); return; }
+    if (v === "22") { show("up"); $("wkInfo").textContent = "Tue Aug 25, 2026 · Avon Fields Front · first tee 5:00 PM"; $("wkUpList").innerHTML = upcomingCards(22); return; }
+    const w = WEEKS.find(x => x.e === +v);
+    $("wkInfo").textContent = `${fd(w.d)}, 2026 · Avon Fields ${w.c || ""}${w.note ? " · " + w.note : ""}`;
+    show(w.rain ? "rain" : "played");
+    if (w.rain) { $("wkRain").innerHTML = `<b>No scores this week.</b><br><span class="updated">${w.note}.</span>`; return; }
+    // Finish position by points (as GolfSoftware ranked it)
+    const byPts = w.p.slice().sort((a, b) => b[3] - a[3] || a[2] - b[2]);
+    const pos = new Map(); byPts.forEach((r, i) => { let k = i; while (k > 0 && byPts[k - 1][3] === r[3]) k--; pos.set(r, (byPts.filter(x => x[3] === r[3]).length > 1 ? "T" : "") + (k + 1)); });
+    const best = WCOLS.find(c => c[1] === wSort)[2];
+    const rows = w.p.slice().sort((a, b) => ((a[wSort] ?? 99) - (b[wSort] ?? 99)) * best * wDir || a[0].localeCompare(b[0]));
+    const nm = n => /^Ghost/.test(n) ? "Ghost sub" : n;
+    const fmt = (v, i) => v == null ? "–" : (i === 3 && !Number.isInteger(v) ? v.toFixed(1) : String(v));
+    $("wkPlayers").innerHTML = `<thead><tr><th>Pos</th><th class="l">Player</th>` + WCOLS.map(c => `<th aria-sort="${c[1] === wSort ? (wDir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-w="${c[1]}">${c[0]}${c[1] === wSort ? (wDir === 1 ? " ▲" : " ▼") : ""}</button></th>`).join("") + `</tr></thead><tbody>` +
+      rows.map(r => `<tr class="${r[0] === "Kumar, Nitin" ? "mine" : ""}${/^Ghost/.test(r[0]) ? " isghost" : ""}"><td class="pos">${pos.get(r)}</td><td class="l"><b>${nm(r[0])}</b></td>` + WCOLS.map(c => `<td class="${c[1] === wSort ? "hot" : ""}">${fmt(r[c[1]], c[1])}</td>`).join("") + `</tr>`).join("") + "</tbody>";
+    $("wkPlayers").querySelectorAll("button[data-w]").forEach(b => b.onclick = () => { const k = +b.dataset.w; if (k === wSort) wDir *= -1; else { wSort = k; wDir = 1; } renderWeek(); });
+    $("wkMatches").innerHTML = PAIRS[w.e].map(([t, a, b]) => {
+      const A = w.t[a] || [null, 0, 0], B = w.t[b] || [null, 0, 0];
+      const win = A[1] > B[1] ? "a" : B[1] > A[1] ? "b" : "tie";
+      const side = (n, t, k) => `<div class="side ${k}${win === k ? " win" : ""}"><b>${n}</b><span class="tn">net ${t[0] ?? "–"}</span><span class="tp num">${fmtP(t[1])}</span></div>`;
+      return `<div class="card mrow${a === "Beer Bombers" || b === "Beer Bombers" ? " mineM" : ""}">${side(a, A, "a")}<div class="mvs"><span class="num">${teeTime(t)}</span>${win === "tie" ? "tie" : "vs"}</div>${side(b, B, "b")}</div>`;
+    }).join("");
+  }
+  const fmtP = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+  // Ringer boards
+  let ringKind = "gross", ringNine = "front", rSort = 10, rDir = 1;
+  const FRONT_PAR = [4,3,4,4,4,3,4,3,4], BACK_PAR = [4,4,3,4,4,4,3,3,4];
+  function renderRinger() {
+    const rows = RINGER[ringKind][ringNine].slice();
+    const par = ringNine === "front" ? FRONT_PAR : BACK_PAR, base = ringNine === "front" ? 1 : 10;
+    rows.sort((a, b) => (rSort === 0 ? a[0].localeCompare(b[0]) : a[rSort] - b[rSort]) * rDir || a[10] - b[10] || a[0].localeCompare(b[0]));
+    const ar = k => rSort === k ? (rDir === 1 ? " ▲" : " ▼") : "";
+    const cell = (v, i) => { const d = v - par[i - 1]; const c = ringKind === "gross" ? (d <= -2 ? "eagle" : d === -1 ? "birdie" : d === 1 ? "bogey" : d >= 2 ? "double" : "") : ""; return `<span class="mk ${c}">${v}</span>`; };
+    $("ringTable").innerHTML = `<thead><tr><th class="l"><button type="button" data-r="0">Player${ar(0)}</button></th>` + par.map((_, i) => `<th><button type="button" data-r="${i + 1}">${base + i}${ar(i + 1)}</button></th>`).join("") + `<th><button type="button" data-r="10">Tot${ar(10)}</button></th></tr>` +
+      `<tr class="parrow"><th class="l">Par</th>` + par.map(p => `<th>${p}</th>`).join("") + `<th>${par.reduce((a, b) => a + b, 0)}</th></tr></thead><tbody>` +
+      rows.map(r => `<tr${r[0] === "Kumar, Nitin" ? ' class="mine"' : ""}><td class="l"><b>${r[0]}</b></td>` + r.slice(1, 10).map((v, i) => `<td class="${rSort === i + 1 ? "hot" : ""}">${cell(v, i + 1)}</td>`).join("") + `<td class="tot ${rSort === 10 ? "hot" : ""}">${r[10]}</td></tr>`).join("") + "</tbody>";
+    $("ringTable").querySelectorAll("button[data-r]").forEach(b => b.onclick = () => { const k = +b.dataset.r; if (k === rSort) rDir *= -1; else { rSort = k; rDir = 1; } renderRinger(); });
+    $("ringNote").textContent = ringKind === "net" ? "Net score per hole after handicap strokes. Tap any column to sort." : "○ birdie · □ bogey. Tap any column to sort.";
+  }
+  document.querySelectorAll("button[data-n]").forEach(b => b.onclick = () => { ringNine = b.dataset.n; document.querySelectorAll("button[data-n]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
+
+  $("wkPick").onchange = renderWeek;
+  renderWeek();
+
+  // Skins: game list from the league site's weekly skins section
+  const GAMES = {
+    "Front nine": ["Team – lowest net","Most 4s and 6s","Closest to the end of the fairway on 5","Fairways in regulation","Closest third shot on 4","Fewest putts","Greens in regulation","Closest to pin on 8","Longest drive on 3"],
+    "Back nine": ["Greens in regulation","Closest to the green on your first shot on 11","Mystery game","Closest to pin on 17","Most 3s and 5s","Longest putt on 18","Fairways in regulation","Longest drive on 13","Low net score"]
+  };
+  const DEFAULT = { title: "Closest to pin on 8", note: "Front nine game. Mark your ball and tell the group card scorer.", winner: "" };
+  const load = () => { try { return JSON.parse(localStorage.getItem("bcc-skins")) || DEFAULT; } catch (e) { return DEFAULT; } };
+  let sk = load();
+  $("skIdeas").innerHTML = [...new Set(Object.values(GAMES).flat())].map(x => `<option value="${x}"></option>`).join("");
+  const EVT = { n: 22, date: "Aug 25" };
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const loadHist = () => { try { return JSON.parse(localStorage.getItem("bcc-skins-hist")) || []; } catch (e) { return []; } };
+  let hist = loadHist();
+  function renderHist() {
+    const rows = [...hist].sort((a, b) => b.n - a.n);
+    $("skHistEmpty").hidden = rows.length > 0;
+    $("skHist").hidden = rows.length === 0;
+    $("skHist").innerHTML = `<thead><tr><th>Wk</th><th class="l">Game</th><th class="l">Winner</th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td class="num" style="white-space:nowrap">${r.n}<br><small class="updated">${esc(r.date)}</small></td><td class="l">${esc(r.title)}</td><td class="l"><b>${esc(r.winner)}</b></td></tr>`).join("") + `</tbody>`;
+  }
+  function renderSkins() {
+    $("skTitle").textContent = sk.title;
+    $("skDesc").textContent = sk.note || "";
+    $("skWinner").textContent = sk.winner || "Posted after the round";
+  }
+  $("skEditBtn").onclick = () => {
+    $("skCustom").value = sk.title;
+    $("skNote").value = sk.note || ""; $("skWin").value = sk.winner || "";
+    $("skForm").hidden = false; $("skView").hidden = true; $("skEditBtn").hidden = true;
+  };
+  const close = () => { $("skForm").hidden = true; $("skView").hidden = false; $("skEditBtn").hidden = !document.body.classList.contains("is-admin"); };
+  window.onSession = close;
+  $("skCancel").onclick = close;
+  $("skForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const title = $("skCustom").value.trim();
+    if (!title) { $("skCustom").focus(); return; }
+    sk = { title, note: $("skNote").value.trim(), winner: $("skWin").value.trim() };
+    hist = hist.filter(r => r.n !== EVT.n);
+    if (sk.winner) hist.push({ n: EVT.n, date: EVT.date, title: sk.title, winner: sk.winner });
+    try { localStorage.setItem("bcc-skins", JSON.stringify(sk)); localStorage.setItem("bcc-skins-hist", JSON.stringify(hist)); } catch (err) {}
+    renderHist();
+    renderSkins(); close();
+  });
+  renderSkins(); renderHist(); close();
+  $("sgFront").innerHTML = GAMES["Front nine"].map(g => `<li>${g}</li>`).join("");
+  $("sgBack").innerHTML = GAMES["Back nine"].map(g => `<li>${g}</li>`).join("");
+})();
+</script>
+<script>
+// GPS yardages. Green spots come from GREENS (built in) plus any spots mapped on this phone.
+(() => {
+  const $ = id => document.getElementById(id);
+  const NINES = {
+    F: { name: "Front", first: 1, par: [4,3,4,4,4,3,4,3,4], yds: [369,153,271,432,354,142,358,177,362] },
+    B: { name: "Back",  first: 10, par: [4,4,3,4,4,4,3,3,4], yds: [245,290,149,351,368,320,156,142,324] }
+  };
+  // Built-in green spots, keyed by course hole number 1-18: { f:[lat,lon], m:[lat,lon], b:[lat,lon] }
+  const GREENS = {};
+  const KEY = "bcc-greens";
+  const loadLocal = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
+  let local = loadLocal();
+  const spots = h => Object.assign({}, GREENS[h] || {}, local[h] || {});
+  let nine = "F", idx = 0, fix = null, watch = null;
+  const holeNo = () => NINES[nine].first + idx;
+
+  const YD = 1.0936133;
+  function dist([lat1, lon1], [lat2, lon2]) {
+    const R = 6371000, r = Math.PI / 180;
+    const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a)) * YD;
+  }
+
+  function renderHoles() {
+    const el = $("gpsHoles"); el.innerHTML = "";
+    for (let i = 0; i < 9; i++) {
+      const h = NINES[nine].first + i, s = spots(h);
+      const b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-current", String(i === idx));
+      b.setAttribute("aria-label", `Hole ${h}`);
+      if (s.m || s.f || s.b) b.classList.add("mapped");
+      b.innerHTML = `${h}<span class="dot"></span>`;
+      b.onclick = () => { idx = i; render(); };
+      el.appendChild(b);
+    }
+  }
+
+  function render() {
+    renderHoles();
+    const n = NINES[nine];
+    $("gpsHoleInfo").textContent = `Hole ${holeNo()} · Par ${n.par[idx]} · ${n.yds[idx]} yds from the blues`;
+    const s = spots(holeNo());
+    const set = (id, k) => {
+      const el = $(id);
+      if (fix && s[k]) { el.textContent = Math.round(dist(fix, s[k])); el.classList.add("on"); }
+      else { el.textContent = "—"; el.classList.remove("on"); }
+    };
+    set("dF", "f"); set("dM", "m"); set("dB", "b");
+    const mapped = ["f", "m", "b"].filter(k => s[k]);
+    if (!mapped.length) $("gpsMsg").textContent = `Hole ${holeNo()}'s green hasn't been mapped yet.`;
+    else if (!fix) $("gpsMsg").textContent = "Turn on GPS to see yardages.";
+    else $("gpsMsg").textContent = mapped.length < 3 ? "Some spots on this green aren't mapped yet." : "Yardages to the green from where you stand.";
+    const names = { f: "front", m: "middle", b: "back" };
+    $("mapStatus").textContent = `Hole ${holeNo()}: ` + (mapped.length ? `${mapped.map(k => names[k]).join(", ")} saved` : "nothing saved yet") + ".";
+    $("mapTool").classList.toggle("admin-on", document.body.classList.contains("is-admin"));
+  }
+
+  function start() {
+    if (!("geolocation" in navigator)) { $("gpsAcc").textContent = "This phone can't share its location."; return; }
+    $("gpsStart").hidden = true;
+    $("gpsAcc").textContent = "Finding you…";
+    watch = navigator.geolocation.watchPosition(p => {
+      fix = [p.coords.latitude, p.coords.longitude];
+      fix.acc = p.coords.accuracy * YD;
+      $("gpsAcc").textContent = `Accuracy ± ${Math.round(fix.acc)} yds`;
+      render();
+    }, err => {
+      if (fix && err.code !== 1) return; // keep the last good fix through brief signal drops
+      $("gpsStart").hidden = false;
+      $("gpsAcc").textContent = err.code === 1 ? "Location is off for this app. Allow it in your phone's settings." : "Can't get a location right now.";
+    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  }
+  $("gpsStart").onclick = start;
+  // If location was allowed before, start as soon as the GPS tab opens.
+  const autoStart = () => {
+    if (watch !== null || location.hash !== "#gps" || !navigator.permissions) return;
+    navigator.permissions.query({ name: "geolocation" }).then(r => { if (r.state === "granted" && watch === null) start(); }).catch(() => {});
+  };
+  window.addEventListener("hashchange", autoStart); autoStart();
+
+  document.querySelectorAll("[data-nine]").forEach(b => b.onclick = () => {
+    nine = b.dataset.nine; idx = 0;
+    document.querySelectorAll("[data-nine]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  });
+
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(local)); } catch (e) {} };
+  document.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+    if (!fix) { $("mapStatus").textContent = "Turn on GPS first."; return; }
+    if (fix.acc > 12 && !confirm(`Accuracy is only ± ${Math.round(fix.acc)} yds. Save anyway?`)) return;
+    const h = holeNo();
+    local[h] = Object.assign({}, local[h], { [b.dataset.set]: [+fix[0].toFixed(7), +fix[1].toFixed(7)] });
+    save(); render();
+  });
+  $("mapClear").onclick = () => {
+    if (!local[holeNo()] || !confirm(`Clear the spots saved on this phone for hole ${holeNo()}?`)) return;
+    delete local[holeNo()]; save(); render();
+  };
+  $("mapShare").onclick = async () => {
+    const text = JSON.stringify(Object.assign({}, GREENS, local));
+    try {
+      if (navigator.share) await navigator.share({ title: "BCC green data", text });
+      else { await navigator.clipboard.writeText(text); $("mapStatus").textContent = "Copied. Paste it in a message to send it over."; }
+    } catch (e) {}
+  };
+
+  // Re-check admin state when the GPS tab opens.
+  window.addEventListener("hashchange", () => { if (location.hash === "#gps") render(); });
+  render();
+})();
+</script>
+<script>
+new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
+  .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+</script>
+</body>
+</html>
