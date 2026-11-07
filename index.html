@@ -1374,7 +1374,9 @@ the spirit, intent, and fairness of league competition.</p>
     if (!sb) return;
     const { data: { session: s } } = await sb.auth.getSession();
     if (!s) return;
-    const { data, error } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", s.user.id).maybeSingle();
+    let { data, error } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", s.user.id).maybeSingle();
+    // Signed up before their email was on the list? Link the account now.
+    if (!data && !error) { const { data: pid } = await sb.rpc("link_me"); if (pid) ({ data, error } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", s.user.id).maybeSingle()); }
     if (data) {
       session = { real: true, playerId: data.id, name: `${data.first_name} ${data.last_name}`, admin: data.is_admin };
       try { localStorage.removeItem("bcc-session"); } catch (e) {}

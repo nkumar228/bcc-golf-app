@@ -281,7 +281,8 @@ tr.inc td { color: var(--bad); }
   async function start() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { $("signinCard").hidden = false; return; }
-    const { data: me } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", session.user.id).maybeSingle();
+    let { data: me } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", session.user.id).maybeSingle();
+    if (!me) { const { data: pid } = await sb.rpc("link_me"); if (pid) ({ data: me } = await sb.from("players").select("id,first_name,last_name,is_admin").eq("user_id", session.user.id).maybeSingle()); }
     $("signOut").hidden = false; $("signinCard").hidden = true;
     $("who").textContent = me ? `${me.first_name} ${me.last_name}` : session.user.email;
     if (!me || !me.is_admin) { $("notAdmin").hidden = false; return; }
