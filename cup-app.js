@@ -33,9 +33,9 @@
     ]);
     const rids = (rounds || []).map(r => r.id);
     const q = t => rids.length ? sb().from(t).select("*").in("round_id", rids) : Promise.resolve({ data: [] });
-    const [{ data: entries }, { data: subs }, { data: ovr }, { data: scores }] = await Promise.all([q("cup_entries"), q("cup_submissions"), q("cup_match_overrides"), q("cup_scores")]);
+    const [{ data: entries }, { data: subs }, { data: ovr }, { data: scores }, { data: avail }] = await Promise.all([q("cup_entries"), q("cup_submissions"), q("cup_match_overrides"), q("cup_scores"), q("cup_availability")]);
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
-    return { cup, sides: sides || [], cp: cp || [], rounds: rounds || [], players: new Map((pl || []).map(p => [p.id, p])), entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], tbc, me };
+    return { cup, sides: sides || [], cp: cp || [], rounds: rounds || [], players: new Map((pl || []).map(p => [p.id, p])), entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], avail: avail || [], tbc, me };
   }
 
   // ---------- Cup history (menu page) ----------
@@ -199,7 +199,9 @@
 
   // ---------- captain ----------
   const pairsOf = r => (F[r.format] || F.singles).pairs;
-  const matchCount = r => r.matches || Math.max(1, Math.ceil(Math.max(0, ...D.sides.map(s => D.cp.filter(c => c.side_id === s.id).length)) / (pairsOf(r) ? 2 : 1)));
+  // Availability set by the commissioner: side players play unless marked out; subs only for the side they're named to.
+  const canPlay = (r, sid, pid) => { const c = D.cp.find(x => x.player_id === pid), a = D.avail.find(x => x.round_id === r.id && x.player_id === pid); if (!c) return false; return c.side_id === sid ? (a ? a.available : true) : c.side_id == null && a?.sub_side_id === sid; };
+  const matchCount = r => r.matches || Math.max(1, Math.ceil(Math.max(0, ...D.sides.map(s => D.cp.filter(c => canPlay(r, s.id, c.player_id)).length)) / (pairsOf(r) ? 2 : 1)));
   const entryOf = (r, sid, slot) => D.entries.find(e => e.round_id === r.id && e.side_id === sid && e.slot === slot && e.player_id);
   // Back and forth: match 1 the first side throws out and the other answers; match 2 the other side throws out; and so on.
   function turnOf(r) {
@@ -229,10 +231,10 @@
   function pickOptions(r, sel, mine) {
     const used = new Set(D.entries.filter(e => e.round_id === r.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
     const ok = p => !used.has(p.id) || p.id === sel;
-    const roster = D.cp.filter(c => c.side_id === mine).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
-    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const roster = D.cp.filter(c => c.side_id === mine && canPlay(r, mine, c.player_id)).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const subs = D.cp.filter(c => c.side_id == null && canPlay(r, mine, c.player_id)).map(c => P(c.player_id)).filter(Boolean).filter(ok).sort((a, b) => a.last_name.localeCompare(b.last_name));
     const o = p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.last_name)}, ${esc(p.first_name)}${idxOf(p.id)}</option>`;
-    return `<option value="">–</option>` + roster.map(o).join("") + (subs.length ? `<optgroup label="Subs (only to even up the sides)">${subs.map(o).join("")}</optgroup>` : "");
+    return `<option value="">–</option>` + roster.map(o).join("") + (subs.length ? `<optgroup label="Subs for your side this round">${subs.map(o).join("")}</optgroup>` : "");
   }
 
   function captainPage() {

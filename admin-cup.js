@@ -28,9 +28,9 @@
     ]);
     const rids = (rounds || []).map(r => r.id);
     const q = t => rids.length ? sb.from(t).select("*").in("round_id", rids) : Promise.resolve({ data: [] });
-    const [{ data: entries }, { data: subs }, { data: ovr }, { data: scores }] = await Promise.all([q("cup_entries"), q("cup_submissions"), q("cup_match_overrides"), q("cup_scores")]);
+    const [{ data: entries }, { data: subs }, { data: ovr }, { data: scores }, { data: avail }] = await Promise.all([q("cup_entries"), q("cup_submissions"), q("cup_match_overrides"), q("cup_scores"), q("cup_availability")]);
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
-    D = { sides: sides || [], cp: cp || [], rounds: rounds || [], entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], tbc };
+    D = { sides: sides || [], cp: cp || [], rounds: rounds || [], entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], avail: avail || [], tbc };
     render();
   }
   $("cupPick").onchange = () => loadCups(+$("cupPick").value);
@@ -89,6 +89,28 @@
     return t;
   }
 
+  // Availability: side players play unless marked out; a sub plays only for the side named for that round.
+  const availOf = (r, pid) => D.avail.find(x => x.round_id === r.id && x.player_id === pid);
+  const canPlay = (r, sid, pid) => { const c = D.cp.find(x => x.player_id === pid), a = availOf(r, pid); if (!c) return false; return c.side_id === sid ? (a ? a.available : true) : c.side_id == null && a?.sub_side_id === sid; };
+  function availTable() {
+    if (!D.rounds.length) return "";
+    const byName = (a, b) => pname(P(a.player_id) || {}).localeCompare(pname(P(b.player_id) || {}));
+    const leaguers = D.sides.flatMap(s => D.cp.filter(c => c.side_id === s.id).sort(byName));
+    const subs = D.cp.filter(c => c.side_id == null).sort(byName);
+    const lockedR = r => r.status === "revealed" || r.status === "final";
+    const head = D.rounds.map(r => `<th style="text-align:center">${esc(r.name)}</th>`).join("");
+    const counts = D.rounds.map(r => `<td style="text-align:center" class="note">${D.sides.map(s => `${esc(s.name)} ${D.cp.filter(c => canPlay(r, s.id, c.player_id)).length}`).join(" · ")}</td>`).join("");
+    const lrow = c => `<tr data-p="${c.player_id}"><td>${sideDot(D.sides.find(s => s.id === c.side_id))}${esc(pname(P(c.player_id) || {}))}</td>${D.rounds.map(r => { const a = availOf(r, c.player_id), on = a ? a.available : true; return `<td style="text-align:center"><label class="row" style="gap:4px;justify-content:center"><input type="checkbox" data-av="${r.id}"${on ? " checked" : ""}${lockedR(r) ? " disabled" : ""}><span class="note" style="margin:0">${on ? "Playing" : "Out"}</span></label></td>`; }).join("")}</tr>`;
+    const srow = c => `<tr data-p="${c.player_id}"><td>${esc(pname(P(c.player_id) || {}))} <span class="note" style="margin:0">sub</span></td>${D.rounds.map(r => { const v = availOf(r, c.player_id)?.sub_side_id ?? ""; return `<td style="text-align:center"><select data-sub="${r.id}"${lockedR(r) ? " disabled" : ""}><option value="">Not subbing</option>${D.sides.map(s => `<option value="${s.id}"${s.id === v ? " selected" : ""}>Subs for ${esc(s.name)}</option>`).join("")}</select></td>`; }).join("")}</tr>`;
+    return `<h3 style="margin:18px 0 8px;font-size:15px">Availability</h3>
+      <p class="note">Side players are playing unless you untick them. A sub plays only in the rounds where you pick the side they sub for. Captains only see the players who can play for them that round, and the number of matches follows these counts unless you set it on the round.</p>
+      <div class="scroll" style="max-height:520px;overflow:auto"><table id="cupAvail"><thead><tr><th>Player</th>${head}</tr></thead><tbody>
+        <tr><td class="note">Available</td>${counts}</tr>
+        ${leaguers.map(lrow).join("")}
+        ${subs.length ? `<tr><td colspan="${D.rounds.length + 1}" style="font-weight:700;padding-top:12px">Subs</td></tr>` + subs.map(srow).join("") : ""}
+      </tbody></table></div>`;
+  }
+
   // ---------- render ----------
   function render() {
     const t = totals();
@@ -114,11 +136,13 @@
       </tbody></table></div>
 
       <h3 style="margin:18px 0 8px;font-size:15px">Players</h3>
-      <p class="note">Tick Captain to give a player the captain page in the app, where they add players to their side and set lineups. Sides stay the same for the whole Cup. Put new players on a side as they join. Subs don't take a side; anyone with at least two league rounds can be a sub, and either captain can put a sub in a lineup. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
+      <p class="note">Tick Captain to give a player the captain page in the app, where they add players to their side and set lineups. Sides stay the same for the whole Cup. Put new players on a side as they join. Subs don't take a side; anyone with at least two league rounds can be a sub. Name the side a sub plays for, round by round, under Availability. The Cup index is frozen when a player is added; "Refresh handicaps" copies everyone's current league index.</p>
       <div class="row" style="margin-bottom:8px">${D.rounds.some(r => r.status === "revealed" || r.status === "final") ? '<span class="pill">Handicaps locked: the first round has started</span>' : '<button class="btn secondary" type="button" id="cupRefresh">Refresh handicaps</button><span class="note" style="margin:0">Use this once the league season is final. It locks when the first round is revealed.</span>'}</div>
       <div class="scroll" style="max-height:420px;overflow:auto"><table id="cupPlayers"><thead><tr><th>Player</th><th>Side</th><th>Captain</th><th class="num">League rounds</th><th class="num">Cup index</th><th class="num">League index now</th></tr></thead><tbody>
         ${roster.map(p => { const c = inCup.get(p.id); return `<tr data-p="${p.id}"><td><b>${esc(pname(p))}</b></td><td><select data-side><option value="">Not playing</option><option value="sub"${c && c.side_id == null ? " selected" : ""}${eligible(p.id) || (c && c.side_id == null) ? "" : " disabled"}>Sub</option>${D.sides.map(s => `<option value="${s.id}"${s.id === c?.side_id ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></td><td>${c?.side_id ? `<input type="checkbox" data-cap${c.is_captain ? " checked" : ""} aria-label="Captain">` : ""}</td><td class="num">${A.hcps.get(p.id)?.rounds_available ?? 0}</td><td class="num">${c?.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</td><td class="num">${A.hcps.get(p.id) ? (+A.hcps.get(p.id).handicap_index).toFixed(2) : "–"}</td></tr>`; }).join("")}
       </tbody></table></div>
+
+      ${availTable()}
 
       <h3 style="margin:18px 0 8px;font-size:15px">Rounds</h3>
       <div style="display:grid;gap:12px">${D.rounds.map(roundBox).join("")}</div>
@@ -162,7 +186,7 @@
   function turnNote(r) {
     if (r.status !== "lineups" || r.blind || !r.first_side_id || !r.format) return r.status === "lineups" && r.blind ? `<p class="note" style="margin:6px 0 0">Blind: you can put in a captain's picks below for them; they still show as not submitted until you reveal.</p>` : "";
     const f = F[r.format], a = r.first_side_id, b = D.sides.find(s => s.id !== a)?.id;
-    const size = Math.max(0, ...D.sides.map(s => D.cp.filter(c => c.side_id === s.id).length));
+    const size = Math.max(0, ...D.sides.map(s => D.cp.filter(c => canPlay(r, s.id, c.player_id)).length));
     const n = r.matches || Math.max(1, Math.ceil(size / (f.pairs ? 2 : 1)));
     const has = (sid, i) => D.entries.some(e => e.round_id === r.id && e.side_id === sid && e.slot === i && e.player_id);
     for (let i = 1; i <= n; i++) {
@@ -173,10 +197,12 @@
     return `<p class="note" style="margin:6px 0 0"><b>Every match is set.</b> Ready to reveal.</p>`;
   }
   function lineupBox(r, s, submitted) {
-    const f = F[r.format] || F.singles, mine = D.cp.filter(c => c.side_id === s.id).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
+    const f = F[r.format] || F.singles, all = D.cp.filter(c => c.side_id === s.id).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
+    const inLineup = new Set(D.entries.filter(e => e.round_id === r.id && e.side_id === s.id).flatMap(e => [e.player_id, e.partner_id]));
+    const mine = all.filter(p => canPlay(r, s.id, p.id) || inLineup.has(p.id));
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === s.id);
     const n = Math.max(f.pairs ? Math.ceil(mine.length / 2) : mine.length, ...es.map(e => e.slot), 1);
-    const subs = D.cp.filter(c => c.side_id == null).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
+    const subs = D.cp.filter(c => c.side_id == null && (canPlay(r, s.id, c.player_id) || inLineup.has(c.player_id))).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
     const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
     const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
@@ -227,6 +253,13 @@
       const { error } = await sb.from("cup_players").upsert(rows, { onConflict: "cup_id,player_id" }); if (!check(error, "Handicaps refreshed")) return;
       await addSubs(cup.id, new Set(D.cp.map(c => c.player_id))); loadCup();
     };
+    const saveAvail = async (rid, pid, patch) => {
+      const cur = D.avail.find(x => x.round_id === rid && x.player_id === pid);
+      const { error } = await sb.from("cup_availability").upsert({ round_id: rid, player_id: pid, available: cur ? cur.available : true, sub_side_id: cur ? cur.sub_side_id : null, ...patch }, { onConflict: "round_id,player_id" });
+      if (check(error)) loadCup();
+    };
+    body.querySelectorAll("#cupAvail [data-av]").forEach(el => el.onchange = () => saveAvail(+el.dataset.av, +el.closest("tr").dataset.p, { available: el.checked }));
+    body.querySelectorAll("#cupAvail [data-sub]").forEach(el => el.onchange = () => saveAvail(+el.dataset.sub, +el.closest("tr").dataset.p, { sub_side_id: +el.value || null, available: true }));
     $("cupAddRound").onclick = async () => {
       const n = Math.max(0, ...D.rounds.map(r => r.number)) + 1;
       const { error } = await sb.from("cup_rounds").insert({ cup_id: cup.id, number: n, name: `Round ${n}`, holes: 9, status: "setup" }); if (check(error, "Round added")) loadCup();

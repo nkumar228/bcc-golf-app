@@ -45,7 +45,9 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+html { background: var(--surface); }
 body {
+  margin: 0; min-height: 100vh;
   background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.4;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -291,6 +293,8 @@ body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
 .view { display: grid; gap: 14px; }
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line);
   padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+/* iPhone Home Screen app: keep the bar's color under it if iOS leaves a strip below */
+.tabs::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 120px; background: var(--surface); }
 .tabs a { display: grid; justify-items: center; gap: 2px; padding: 6px 0; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; letter-spacing: .02em; border-radius: 10px; }
 .tabs a svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .tabs a[aria-current="page"] { color: var(--green); background: var(--green-soft); }
@@ -2124,8 +2128,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=22"></script>
-<script src="cup-app.js?v=22"></script>
+<script src="cup.js?v=24"></script>
+<script src="cup-app.js?v=24"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
