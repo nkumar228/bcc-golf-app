@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       return await send(ids, { title: "Ready to reveal", body: `${cupName ?? "Queen City Cup"}, ${r.name}: every lineup is in. Reveal the matchups in the admin Cup tab.`, url: APP + "admin.html", tag: `cup-ready-${r.id}` });
     };
 
-    if (body.action === "test") return json({ sent: await send([u.user.id], { title: "BCC Golf", body: "Alerts are on. You'll get one when it's your turn to pick.", url: APP + "#captain", tag: "test" }) });
+    if (body.action === "test") return json({ sent: await send([u.user.id], { title: "BCC Golf", body: "Cup alerts are on for this phone.", url: APP + "#captain", tag: "test" }) });
 
     // Captains have picked the format and the order: tell the admins
     if (body.action === "cup_setup") {
@@ -64,6 +64,32 @@ Deno.serve(async (req) => {
       const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
       const ids = (admins ?? []).map((a) => a.user_id as string); // the admin who made the last pick gets it too, as a confirmation
       return json({ sent: await send(ids, { title: "Format and order are in", body: `${cup?.name ?? "Queen City Cup"}, ${r.name}: ${label[r.format] ?? r.format}, ${order}.${r.status === "setup" ? " Open lineups when you're ready." : ""}`, url: APP + "admin.html", tag: `cup-setup-${r.id}` }) });
+    }
+
+    // An admin revealed a round: tell everyone with alerts on, with their own match if they have one
+    if (body.action === "cup_revealed") {
+      const { data: isAdm } = await caller.rpc("is_admin");
+      if (!isAdm) return json({ error: "Admins only" }, 403);
+      const rid = Number(body.round_id);
+      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,format").eq("id", rid).maybeSingle();
+      if (!r || r.status !== "revealed") return json({ sent: 0 });
+      const { data: cup } = await admin.from("cups").select("name").eq("id", r.cup_id).maybeSingle();
+      const { data: es } = await admin.from("cup_entries").select("side_id,slot,player_id,partner_id").eq("round_id", rid).not("player_id", "is", null);
+      const { data: subs } = await admin.from("push_subs").select("user_id");
+      const users = [...new Set((subs ?? []).map((x) => x.user_id as string))];
+      const { data: ps } = await admin.from("players").select("id,last_name,user_id").in("user_id", users.length ? users : ["00000000-0000-0000-0000-000000000000"]);
+      const { data: all } = await admin.from("players").select("id,last_name");
+      const nm = (id: number | null) => (all ?? []).find((p) => p.id === id)?.last_name ?? "?";
+      const team = (e: { player_id: number; partner_id: number | null }) => [e.player_id, e.partner_id].filter(Boolean).map((x) => nm(x as number)).join(" & ");
+      let n = 0;
+      for (const uid of users) {
+        const me = (ps ?? []).find((p) => p.user_id === uid);
+        const mine = me && (es ?? []).find((e) => e.player_id === me.id || e.partner_id === me.id);
+        const opp = mine && (es ?? []).find((e) => e.slot === mine.slot && e.side_id !== mine.side_id);
+        const msg = mine ? `Match ${mine.slot}: ${team(mine)} vs ${opp ? team(opp) : "TBD"}. Good luck!` : "See all the matches in the app.";
+        n += await send([uid], { title: `${r.name} matchups are out`, body: `${cup?.name ?? "Queen City Cup"}. ${msg}`, url: APP + "#home", tag: `cup-rev-${rid}` });
+      }
+      return json({ sent: n });
     }
 
     if (body.action === "cup_turn") {

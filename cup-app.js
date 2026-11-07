@@ -135,7 +135,8 @@
     $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
-    const s = ses(), adminOnly = !!(s && s.admin) && !D.captainOf;
+    // Everyone who isn't a captain turns alerts on from the Cup tab (captains do it on the Captain page)
+    const adminOnly = !D.captainOf;
     $("cupMine").innerHTML = adminOnly ? alertsCard() : "";
     document.body.classList.toggle("is-captain", !!D.captainOf);
     $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
@@ -360,8 +361,8 @@
   }
   function alertsCard() {
     const st = alertState, msg = {
-      on: `<b>Turn alerts are on</b> for this phone.<br><button class="linkbtn" type="button" id="alertTest">Send me a test</button> · <button class="linkbtn" type="button" id="alertOff">Turn off</button>`,
-      off: `<b>Get an alert when it's your turn to pick${ses()?.admin ? " and when matchups are ready to reveal" : ""}.</b><br><button class="btn small" type="button" id="alertOn" style="margin-top:8px">Turn on alerts</button>`,
+      on: `<b>Cup alerts are on</b> for this phone.<br><button class="linkbtn" type="button" id="alertTest">Send me a test</button> · <button class="linkbtn" type="button" id="alertOff">Turn off</button>`,
+      off: `<b>${D?.captainOf ? "Get an alert when it's your turn to pick and when matchups are revealed" : "Get an alert when the Cup matchups are revealed"}${ses()?.admin ? " (and when they're ready to reveal)" : ""}.</b><br><button class="btn small" type="button" id="alertOn" style="margin-top:8px">Turn on alerts</button>`,
       denied: `<b>Alerts are blocked</b> for this app. Turn notifications back on for it in your phone's settings, then come back here.`,
       "ios-install": `<b>Want an alert when it's your turn?</b> On iPhone, add the app to your Home Screen first (Share, then Add to Home Screen) and open it from there. The button to turn alerts on shows up there.`,
       nosupport: `This browser can't show alerts. Open the app in Chrome (Android) or from your Home Screen (iPhone).`

@@ -293,7 +293,7 @@
       if (rv) rv.onclick = async () => {
         if (rv.dataset.early && !confirm(rv.dataset.early + " Reveal anyway?")) return;
         const { error } = await sb.from("cup_rounds").update({ status: "revealed", revealed_at: new Date().toISOString() }).eq("id", r.id);
-        if (check(error, "Matchups revealed in the app")) loadCup();
+        if (check(error, "Matchups revealed in the app")) { try { sb.functions.invoke("push", { body: { action: "cup_revealed", round_id: r.id } }); } catch (e) {} loadCup(); }
       };
       box.querySelectorAll(".lu [data-side]").forEach(sbox => {
         const sid = +sbox.dataset.side;
