@@ -49,7 +49,8 @@
       const golfers = ids.map(pid => { const i = info(pid) || {}; const tee = teeFor(round, teesByCourse, i.tee); if (!holes && tee) holes = tee.holes; const raw = tee ? courseHcpRaw(i.index, tee, round.holes) : 0; return { pid, name: i.name || "?", index: +i.index || 0, tee, raw, ch: r0(raw) }; });
       if (!golfers.length) return;
       if (f.ball === "one") {
-        const raw = f.w ? teamHcpRaw(golfers.map(g => g.raw), f.w) : golfers[0].raw;
+        // A golfer playing alone (side one short) keeps their own course handicap
+        const raw = f.w && golfers.length > 1 ? teamHcpRaw(golfers.map(g => g.raw), f.w) : golfers[0].raw;
         balls.push({ side: sd.id, key: golfers[0].pid, players: golfers.map(g => g.pid), label: golfers.map(g => g.name).join(" & "), golfers, raw, hcp: r0(raw) });
       } else golfers.forEach(g => balls.push({ side: sd.id, key: g.pid, players: [g.pid], label: g.name, golfers: [g], raw: g.raw, hcp: g.ch }));
     });

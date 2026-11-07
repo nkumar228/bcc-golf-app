@@ -170,7 +170,7 @@
         <select data-rf="course_id" title="Course">${courseOpts(r.course_id)}</select>${r.holes === 18 ? `<select data-rf="course2_id" title="Back nine (leave blank for a full 18-hole course)">${courseOpts(r.course2_id)}</select>` : ""}
       </div>
       <div class="row" style="margin-top:8px">
-        <label>Format</label><select data-rf="format"${locked ? " disabled" : ""}><option value="">Not picked</option>${Object.entries(F).map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select>
+        <label>Format</label><select data-rf="format"${locked || r.allow_blind ? " disabled" : ""}${r.allow_blind ? ' title="The Final is always singles"' : ""}><option value="">Not picked</option>${Object.entries(F).map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select>
         <label>picked by</label><select data-rf="format_side_id">${sideOpts(r.format_side_id, "Admin")}</select>
         <label>Order picked by</label><select data-rf="order_side_id">${sideOpts(r.order_side_id, "Admin")}</select>
         <label>Goes first</label><select data-first${locked ? " disabled" : ""}><option value="">Not picked</option>${D.sides.map(s => `<option value="${s.id}"${String(firstVal) === String(s.id) ? " selected" : ""}>${esc(s.name)} goes first</option>`).join("")}<option value="blind"${r.blind ? " selected" : ""}>Blind</option></select>

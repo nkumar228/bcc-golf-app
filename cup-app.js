@@ -281,11 +281,11 @@
     if (chs.some(x => x == null)) return "set the course to see handicaps";
     const raws = ids.map(id => chRaw(r, id)), d = x => x.toFixed(2);
     if (!f.pairs) return `hcp ${d(raws[0])} → ${chs[0]}`;
-    if (ids.length < 2) return `${last(ids[0])} ${d(raws[0])} → ${chs[0]}`;
+    if (ids.length < 2) return `${last(ids[0])} alone · hcp ${d(raws[0])} → ${chs[0]}`;
     if (f.w) { const t = C.teamHcpRaw(raws, f.w); return `team hcp ${d(t)} → ${Math.round(t + 1e-9)} (${raws.map(d).join(" & ")})`; }
     return `hcps ${raws.map(d).join(" & ")} → ${chs.join(" & ")}`;
   }
-  const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") : "";
+  const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") + (pairsOf(r) && !e.partner_id ? " (alone)" : "") : "";
   const idxOf = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
   function pickOptions(r, sel, mine) {
     const used = new Set(D.entries.filter(e => e.round_id === r.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
@@ -315,7 +315,8 @@
   function roundForCaptain(r, mine, other) {
     const f = F[r.format] || null, started = D.entries.some(e => e.round_id === r.id) || D.subs.some(s => s.round_id === r.id);
     const parts = [];
-    if (r.format_side_id === mine && !started) parts.push(`<label class="crow"><span>Format</span><select data-fmt="${r.id}"><option value="">Pick one</option>${Object.entries(F).filter(([k]) => r.allow_blind ? k === "singles" : k !== "singles").map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select></label>${f ? `<p class="updated">${esc(f.how)}</p>` : ""}`);
+    if (r.allow_blind) parts.push(`<p class="updated">Format: <b>Singles</b> (the Final is always singles)</p>`);
+    else if (r.format_side_id === mine && !started) parts.push(`<label class="crow"><span>Format</span><select data-fmt="${r.id}"><option value="">Pick one</option>${Object.entries(F).filter(([k]) => r.allow_blind ? k === "singles" : k !== "singles").map(([k, v]) => `<option value="${k}"${k === r.format ? " selected" : ""}>${v.label}</option>`).join("")}</select></label>${f ? `<p class="updated">${esc(f.how)}</p>` : ""}`);
     else parts.push(`<p class="updated">Format: <b>${f ? f.label : "not picked yet"}</b>${!f && r.format_side_id ? ` (${esc(sideName(r.format_side_id))} picks)` : ""}</p>`);
     const ordVal = r.blind ? "blind" : r.first_side_id ?? "";
     if (r.order_side_id === mine && !started) parts.push(`<label class="crow"><span>Order</span><select data-ord="${r.id}"><option value="">Pick one</option>${D.sides.map(s => `<option value="${s.id}"${String(ordVal) === String(s.id) ? " selected" : ""}>${esc(s.name)} goes first</option>`).join("")}<option value="blind"${r.blind ? " selected" : ""}>Blind</option></select></label>`);
@@ -339,7 +340,7 @@
     else {
       const vs = t.throwing ? "" : ` against ${names(r, entryOf(r, D.sides.find(s => s.id !== mine).id, t.slot))}`;
       action = `<div class="cpick" data-round="${r.id}"><p style="margin:0"><b>Your turn:</b> ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}${vs}`}.</p>
-        <div class="crow2"><select data-pp="player">${pickOptions(r, null, mine)}</select>${pairs ? `<select data-pp="partner">${pickOptions(r, null, mine)}</select>` : ""}<span class="chcp" data-hcp="${r.id}"></span></div>
+        <div class="crow2"><select data-pp="player">${pickOptions(r, null, mine)}</select>${pairs ? `<select data-pp="partner">${pickOptions(r, null, mine).replace('<option value="">–</option>', '<option value="">–</option><option value="solo">Plays alone (one short)</option>')}</select>` : ""}<span class="chcp" data-hcp="${r.id}"></span></div>
         <button class="btn small" type="button" data-place="${r.id}" style="margin-top:8px">${t.throwing ? "Throw out" : "Send"}</button></div>`;
     }
     const undo = last && last.side_id === mine && r.status === "lineups" ? `<button class="linkbtn" type="button" data-undo="${r.id}">Take back my last pick</button>` : "";
@@ -418,7 +419,7 @@
     const pairs = pairsOf(r), submitted = D.subs.some(s => s.round_id === r.id && s.side_id === mine), n = matchCount(r);
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === mine);
     if (submitted) return `<p class="updated"><b>Your picks are in.</b> They stay hidden until the commissioner reveals the round.</p><ol class="clist">${es.sort((a, b) => a.slot - b.slot).map(e => `<li>${names(r, e)}</li>`).join("")}</ol>`;
-    return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
+    return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line. If your side is one player short, leave one partner blank and that golfer plays alone off their own handicap" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
       <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${pairs ? "Team " : ""}${i + 1}</b><select data-e="player_id">${pickOptions(r, e?.player_id, mine)}</select>${pairs ? `<select data-e="partner_id">${pickOptions(r, e?.partner_id, mine)}</select>` : ""}<span class="chcp">${esc(teamHcpText(r, e?.player_id, e?.partner_id))}</span></div>`; }).join("")}
       <button class="btn small" type="button" data-submit="${r.id}" style="margin-top:10px">Submit picks</button><p class="si-err" id="cupErr${r.id}"></p></div>`;
   }
@@ -441,8 +442,9 @@
     document.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { if (confirm("Take this player off your side? They go back to the sub pool.")) rpc("cup_set_member", { p_cup: D.cup.id, p_player: +b.dataset.drop, p_join: false }); });
     document.querySelectorAll("[data-place]").forEach(b => b.onclick = () => {
       const rid = +b.dataset.place, box = b.closest(".cpick"), pl = +box.querySelector('[data-pp="player"]').value || null, pt = box.querySelector('[data-pp="partner"]') ? (+box.querySelector('[data-pp="partner"]').value || null) : null;
-      const r = D.rounds.find(x => x.id === rid);
-      if (!pl || (pairsOf(r) && !pt)) { $("cupErr" + rid).textContent = pairsOf(r) ? "Pick both players." : "Pick a player."; return; }
+      const r = D.rounds.find(x => x.id === rid), solo = box.querySelector('[data-pp="partner"]')?.value === "solo";
+      if (solo && !confirm("Send this golfer out alone? Only use this when your side is one player short. They play off their own handicap.")) return;
+      if (!pl || (pairsOf(r) && !pt && !solo)) { $("cupErr" + rid).textContent = pairsOf(r) ? "Pick both players." : "Pick a player."; return; }
       if (pl === pt) { $("cupErr" + rid).textContent = "Pick two different players."; return; }
       rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid).then(ok => ok && pingTurn(rid));
     });
@@ -474,6 +476,7 @@
       const ids = es.flatMap(e => [e.player_id, f.pairs ? e.partner_id : null]).filter(Boolean);
       if (new Set(ids).size !== ids.length) { $("cupErr" + rid).textContent = "Someone is in the lineup twice."; return; }
       if (!es.length) { $("cupErr" + rid).textContent = "The lineup is empty."; return; }
+      if (f.pairs && es.filter(e => !e.partner_id).length > 1) { $("cupErr" + rid).textContent = "Only one player can play alone (when your side is one short)."; return; }
       if (!confirm(`Submit ${es.length} ${f.pairs ? "teams" : "players"}? You can't change them after this unless the commissioner unlocks it.`)) return;
       busy = true; const { error } = await sb().rpc("cup_submit", { p_round: rid, p_side: D.captainOf }); busy = false;
       if (error) { $("cupErr" + rid).textContent = error.message; return; }
