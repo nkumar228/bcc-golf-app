@@ -135,7 +135,7 @@
     $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
     $("cupRounds").innerHTML = all.map(({ r, ms }) => roundCard(r, ms)).join("");
     badge();
-    wire();
+    wire(); wireAlerts(); if (D.captainOf) checkAlerts();
   }
   function roundLine(r) {
     const f = F[r.format];
@@ -249,7 +249,7 @@
     const body = !cur ? `<div class="card pad"><p class="updated" style="margin:0">Every round is final.</p></div>`
       : cur.status === "revealed" ? `<div class="card pad"><p class="label">${esc(cur.name)}</p><p class="updated" style="margin:6px 0 0">Matches are set and being played. The next round shows up here once this one is final.</p></div>`
       : roundForCaptain(cur, mine, other);
-    return myTurnCard() + roster + body;
+    return myTurnCard() + alertsCard() + roster + body;
   }
   function roundForCaptain(r, mine, other) {
     const f = F[r.format] || null, started = D.entries.some(e => e.round_id === r.id) || D.subs.some(s => s.round_id === r.id);
@@ -274,7 +274,7 @@
     const last = D.entries.filter(e => e.round_id === r.id).sort((x, y) => y.id - x.id)[0];
     let action;
     if (t.done) action = `<p class="updated"><b>Every match is set.</b> Waiting for the commissioner to reveal them.</p>`;
-    else if (t.side !== mine) action = `<p class="updated">Waiting for ${esc(sideName(t.side))} to ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}`}.</p>${nudge(r, t)}`;
+    else if (t.side !== mine) action = `<p class="updated">Waiting for ${esc(sideName(t.side))} to ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}`}.</p>`;
     else {
       const vs = t.throwing ? "" : ` against ${names(r, entryOf(r, D.sides.find(s => s.id !== mine).id, t.slot))}`;
       action = `<div class="cpick" data-round="${r.id}"><p style="margin:0"><b>Your turn:</b> ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}${vs}`}.</p>
@@ -284,16 +284,57 @@
     const undo = last && last.side_id === mine && r.status === "lineups" ? `<button class="linkbtn" type="button" data-undo="${r.id}">Take back my last pick</button>` : "";
     return `<p class="updated">Back and forth: one ${unit} at a time. Each pick shows up for both captains right away; everyone else sees the matches when they're revealed.</p><ol class="cbf">${rows}</ol>${action}${undo}<p class="si-err" id="cupErr${r.id}"></p>`;
   }
-  // Telling the other captain it's their turn: a ready-made text or email from the captain's own phone.
-  const APP = "https://nkumar228.github.io/bcc-golf-app/#captain";
-  function nudge(r, t) {
-    const caps = D.cp.filter(c => c.is_captain && c.side_id === t.side).map(c => P(c.player_id)).filter(Boolean);
-    if (!caps.length) return "";
-    const msg = `Your turn in the ${D.cup.name}, ${r.name}: ${t.throwing ? `throw out match ${t.slot}` : `answer match ${t.slot}`}. Open the captain page: ${APP}`;
-    const phones = caps.map(p => p.phone).filter(Boolean).join(","), emails = caps.map(p => p.email).filter(Boolean).join(",");
-    const who = caps.map(p => esc(p.first_name)).join(" & ");
-    return `<div class="crow2 nudge"><span class="updated">Let ${who} know:</span><a class="btn small secondary" href="sms:${encodeURIComponent(phones)}?&body=${encodeURIComponent(msg)}">Text</a>${emails ? `<a class="btn small secondary" href="mailto:${encodeURIComponent(emails)}?subject=${encodeURIComponent("Your Cup pick")}&body=${encodeURIComponent(msg)}">Email</a>` : ""}</div>`;
+  // Push alerts: a captain turns them on once per phone; picks then tell the next captain it's their turn.
+  let alertState = null; // "on" | "off" | "denied" | "nosupport" | "ios-install"
+  const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  async function checkAlerts() {
+    let st;
+    if (!pushOK()) st = isIOS() && !standalone() ? "ios-install" : "nosupport";
+    else if (Notification.permission === "denied") st = "denied";
+    else { try { const reg = await navigator.serviceWorker.ready; st = (await reg.pushManager.getSubscription()) && Notification.permission === "granted" ? "on" : "off"; } catch (e) { st = "off"; } }
+    if (st !== alertState) { alertState = st; if ($("capAlerts")) $("capAlerts").outerHTML = alertsCard(); wireAlerts(); }
   }
+  function alertsCard() {
+    const st = alertState, msg = {
+      on: `<b>Turn alerts are on</b> for this phone.<br><button class="linkbtn" type="button" id="alertTest">Send me a test</button> · <button class="linkbtn" type="button" id="alertOff">Turn off</button>`,
+      off: `<b>Get an alert when it's your turn to pick.</b><br><button class="btn small" type="button" id="alertOn" style="margin-top:8px">Turn on alerts</button>`,
+      denied: `<b>Alerts are blocked</b> for this app. Turn notifications back on for it in your phone's settings, then come back here.`,
+      "ios-install": `<b>Want an alert when it's your turn?</b> On iPhone, add the app to your Home Screen first (Share, then Add to Home Screen) and open it from there. The button to turn alerts on shows up there.`,
+      nosupport: `This browser can't show alerts. Open the app in Chrome (Android) or from your Home Screen (iPhone).`
+    }[st];
+    return `<div class="card pad" id="capAlerts">${msg ? `<p style="margin:0" class="updated">${msg}</p><p class="si-err" id="alertErr"></p>` : ""}</div>`;
+  }
+  const b64u = s => { const p = "=".repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+  async function alertsOn() {
+    const err = t => { if ($("alertErr")) $("alertErr").textContent = t; };
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { alertState = null; return checkAlerts(); }
+      const { data, error } = await sb().functions.invoke("push", { body: { action: "key" } });
+      if (error || !data?.key) return err("Couldn't reach the alert server. Try again in a minute.");
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(data.key) });
+      const j = sub.toJSON();
+      const { error: e2 } = await sb().from("push_subs").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: "endpoint" });
+      if (e2) return err("Couldn't save: " + e2.message);
+      await sb().functions.invoke("push", { body: { action: "test" } });
+      alertState = null; checkAlerts();
+    } catch (e) { err("Couldn't turn on alerts: " + (e.message || e)); }
+  }
+  async function alertsOff() {
+    try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) { await sb().from("push_subs").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); } } catch (e) {}
+    alertState = null; checkAlerts();
+  }
+  function wireAlerts() {
+    if ($("alertOn")) $("alertOn").onclick = alertsOn;
+    if ($("alertOff")) $("alertOff").onclick = alertsOff;
+    if ($("alertTest")) $("alertTest").onclick = async () => { const { data, error } = await sb().functions.invoke("push", { body: { action: "test" } }); if ($("alertErr")) $("alertErr").textContent = error ? "Couldn't send the test." : data?.sent ? "" : "No phone found. Turn alerts off and on again."; };
+  }
+  // Tell whoever picks next (fire and forget)
+  const pingTurn = rid => { try { sb().functions.invoke("push", { body: { action: "cup_turn", round_id: rid } }); } catch (e) {} };
+
   // Rounds where it's this captain's turn (back and forth) or picks are still to go in (blind)
   function myTurns() {
     const mine = D.captainOf; if (!mine) return [];
@@ -325,13 +366,13 @@
     document.querySelectorAll("[data-fmt]").forEach(el => el.onchange = async () => {
       if (!el.value) return; busy = true;
       const { error } = await sb().rpc("cup_set_format", { p_round: +el.dataset.fmt, p_format: el.value }); busy = false;
-      if (error) alert(error.message); load();
+      if (error) alert(error.message); else pingTurn(+el.dataset.fmt); load();
     });
     document.querySelectorAll("[data-ord]").forEach(el => el.onchange = async () => {
       if (!el.value) return; busy = true;
       const blind = el.value === "blind";
       const { error } = await sb().rpc("cup_set_order", { p_round: +el.dataset.ord, p_first_side: blind ? null : +el.value, p_blind: blind }); busy = false;
-      if (error) alert(error.message); load();
+      if (error) alert(error.message); else pingTurn(+el.dataset.ord); load();
     });
     const rpc = async (fn, args, errId) => { busy = true; const { error } = await sb().rpc(fn, args); busy = false; if (error) { if (errId && $(errId)) $(errId).textContent = error.message; else alert(error.message); return false; } await load(); return true; };
     if ($("capAddBtn")) $("capAddBtn").onclick = () => { const v = +$("capAdd").value; if (v) rpc("cup_set_member", { p_cup: D.cup.id, p_player: v, p_join: true }); };
@@ -341,7 +382,7 @@
       const r = D.rounds.find(x => x.id === rid);
       if (!pl || (pairsOf(r) && !pt)) { $("cupErr" + rid).textContent = pairsOf(r) ? "Pick both players." : "Pick a player."; return; }
       if (pl === pt) { $("cupErr" + rid).textContent = "Pick two different players."; return; }
-      rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid);
+      rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid).then(ok => ok && pingTurn(rid));
     });
     document.querySelectorAll(".cpick").forEach(box => {
       const r = D.rounds.find(x => x.id === +box.dataset.round), out = box.querySelector(".chcp");

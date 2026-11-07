@@ -195,6 +195,8 @@
   }
 
   // ---------- events ----------
+  // Tell the captain whose pick it is now (push alert; fire and forget)
+  const pingTurn = rid => { try { sb.functions.invoke("push", { body: { action: "cup_turn", round_id: rid } }); } catch (e) {} };
   function wire() {
     const body = $("cupBody");
     $("cupActive").onchange = async e => {
@@ -234,18 +236,18 @@
       box.querySelectorAll("[data-rf]").forEach(el => el.onchange = async () => {
         const k = el.dataset.rf; let v = el.value || null;
         if (["holes", "course_id", "course2_id", "format_side_id", "order_side_id", "matches"].includes(k)) v = v == null ? null : +v;
-        const { error } = await sb.from("cup_rounds").update({ [k]: v }).eq("id", r.id); if (check(error)) loadCup();
+        const { error } = await sb.from("cup_rounds").update({ [k]: v }).eq("id", r.id); if (check(error)) { if (k === "format") pingTurn(r.id); loadCup(); }
       });
       const first = box.querySelector("[data-first]");
       if (first) first.onchange = async () => {
         const v = first.value, patch = v === "blind" ? { blind: true, first_side_id: null } : { blind: false, first_side_id: +v || null };
-        const { error } = await sb.from("cup_rounds").update(patch).eq("id", r.id); if (check(error)) loadCup();
+        const { error } = await sb.from("cup_rounds").update(patch).eq("id", r.id); if (check(error)) { pingTurn(r.id); loadCup(); }
       };
       box.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
         const st = b.dataset.st;
         if (st === "lineups" && r.status === "setup" && (!r.format || (!r.first_side_id && !r.blind)) && !confirm("The format or who goes first isn't picked yet. Captains can still pick them in the app. Open lineups anyway?")) return;
         if (st === "lineups" && r.status === "revealed" && !confirm("Hide the matchups again? Scores already entered stay.")) return;
-        const { error } = await sb.from("cup_rounds").update({ status: st }).eq("id", r.id); if (check(error, STATUS[st])) loadCup();
+        const { error } = await sb.from("cup_rounds").update({ status: st }).eq("id", r.id); if (check(error, STATUS[st])) { if (st === "lineups") pingTurn(r.id); loadCup(); }
       });
       const rv = box.querySelector("[data-reveal]");
       if (rv) rv.onclick = async () => {
@@ -260,7 +262,7 @@
           const rec = { round_id: r.id, side_id: sid, slot, player_id: cur.player_id ?? null, partner_id: cur.partner_id ?? null, [el.dataset.e]: +el.value || null };
           const res = !rec.player_id && !rec.partner_id ? await sb.from("cup_entries").delete().eq("round_id", r.id).eq("side_id", sid).eq("slot", slot)
             : await sb.from("cup_entries").upsert(rec, { onConflict: "round_id,side_id,slot" });
-          if (check(res.error)) loadCup();
+          if (check(res.error)) { if (!r.blind && rec.player_id && (!F[r.format]?.pairs || rec.partner_id)) pingTurn(r.id); loadCup(); }
         }));
         const un = sbox.querySelector("[data-unlock]");
         if (un) un.onclick = async () => { const { error } = await sb.from("cup_submissions").delete().eq("round_id", r.id).eq("side_id", sid); if (check(error, "Unlocked")) loadCup(); };
