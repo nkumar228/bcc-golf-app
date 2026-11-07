@@ -419,6 +419,8 @@
         if (res.error) { $("cupErr" + rid).textContent = "Couldn't save: " + res.error.message; return; }
         if (cur.round_id) Object.assign(cur, rec); else D.entries.push(rec);
         const r = D.rounds.find(x => x.id === rid), row = el.closest("[data-slot]"); row.querySelector(".chcp").textContent = teamHcpText(r, rec.player_id || rec.partner_id, rec.player_id ? rec.partner_id : null);
+        // Refresh every pick list in this lineup: a player just picked drops out, one just cleared comes back
+        box.querySelectorAll("[data-e]").forEach(sel => { const v = +sel.value || null; sel.innerHTML = pickOptions(r, v, sid); });
       });
     });
     document.querySelectorAll("[data-submit]").forEach(b => b.onclick = async () => {
