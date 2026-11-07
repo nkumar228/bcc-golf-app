@@ -152,14 +152,14 @@
   const fmtPts = v => v % 1 ? `${Math.floor(v) || ""}½` : String(v);
 
   function roundBox(r) {
-    const subs = D.subs.filter(s => s.round_id === r.id), done = id => subs.some(s => s.side_id === id);
+    const subs = D.subs.filter(s => s.round_id === r.id), done = id => r.blind ? subs.some(s => s.side_id === id) : turnNote(r).includes("Every match is set");
     const courseOpts = sel => `<option value="">–</option>` + A.courses.map(c => `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${esc(c.name)}</option>`).join("");
     const sideOpts = (sel, blank) => (blank ? `<option value="">${blank}</option>` : "") + D.sides.map(s => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${esc(s.name)}</option>`).join("");
     const locked = r.status === "revealed" || r.status === "final";
     const f = F[r.format];
     const firstVal = r.blind ? "blind" : r.first_side_id ?? "";
     const act = { setup: `<button class="btn" type="button" data-st="lineups">Open lineups</button>`,
-      lineups: `<button class="btn" type="button" data-reveal${D.sides.every(s => done(s.id)) ? "" : ' data-early="1"'}>Reveal matchups</button><button class="btn secondary" type="button" data-st="setup">Close lineups</button>`,
+      lineups: `<button class="btn" type="button" data-reveal${D.sides.every(s => done(s.id)) ? "" : ` data-early="${r.blind ? "Not every lineup is submitted." : "Not every match is set yet."}"`}>Reveal matchups</button><button class="btn secondary" type="button" data-st="setup">Close lineups</button>`,
       revealed: `<button class="btn" type="button" data-st="final">Mark final</button><button class="btn secondary" type="button" data-st="lineups">Hide again</button>`,
       final: `<button class="btn secondary" type="button" data-st="revealed">Reopen</button>` }[r.status];
     return `<div class="box" data-round="${r.id}" style="border:1px solid var(--line);border-radius:12px;padding:12px">
@@ -188,10 +188,10 @@
     const f = F[r.format], a = r.first_side_id, b = D.sides.find(s => s.id !== a)?.id;
     const size = Math.max(0, ...D.sides.map(s => D.cp.filter(c => canPlay(r, s.id, c.player_id)).length));
     const n = r.matches || Math.max(1, Math.ceil(size / (f.pairs ? 2 : 1)));
-    const has = (sid, i) => D.entries.some(e => e.round_id === r.id && e.side_id === sid && e.slot === i && e.player_id);
     for (let i = 1; i <= n; i++) {
       const th = i % 2 ? a : b, an = i % 2 ? b : a;
-      const who = !has(th, i) ? [th, "throw out"] : !has(an, i) ? [an, "answer"] : null;
+      const full = (sid, i) => D.entries.some(e => e.round_id === r.id && e.side_id === sid && e.slot === i && e.player_id && (!f.pairs || e.partner_id));
+      const who = !full(th, i) ? [th, "throw out"] : !full(an, i) ? [an, "answer"] : null;
       if (who) return `<p class="note" style="margin:6px 0 0"><b>Next pick: ${esc(sideName(who[0]))} to ${who[1]} match ${i}.</b> To pick for a captain, fill in ${esc(sideName(who[0]))}'s line ${i} below.</p>`;
     }
     return `<p class="note" style="margin:6px 0 0"><b>Every match is set.</b> Ready to reveal.</p>`;
@@ -206,7 +206,7 @@
     const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
     const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
-    return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "picks" : "lineup"} ${submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
+    return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "picks" : "lineup"} ${!r.blind ? `<span class="pill">${es.filter(e => e.player_id).length} picked</span>` : submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
       ${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="slot" data-slot="${i + 1}"><b style="width:22px">${i + 1}</b><select data-e="player_id"${locked ? " disabled" : ""}>${opt(e?.player_id)}</select>${f.pairs ? `<select data-e="partner_id"${locked ? " disabled" : ""}>${opt(e?.partner_id)}</select>` : ""}</div>`; }).join("")}
       ${submitted && !locked ? `<button class="btn secondary" type="button" data-unlock style="margin-top:8px">Unlock for the captain</button>` : ""}</div>`;
   }
@@ -284,7 +284,7 @@
       });
       const rv = box.querySelector("[data-reveal]");
       if (rv) rv.onclick = async () => {
-        if (rv.dataset.early && !confirm("Not every lineup is submitted. Reveal anyway?")) return;
+        if (rv.dataset.early && !confirm(rv.dataset.early + " Reveal anyway?")) return;
         const { error } = await sb.from("cup_rounds").update({ status: "revealed", revealed_at: new Date().toISOString() }).eq("id", r.id);
         if (check(error, "Matchups revealed in the app")) loadCup();
       };
