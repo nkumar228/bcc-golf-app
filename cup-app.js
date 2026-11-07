@@ -156,9 +156,9 @@
     const w = m.ov ? m.ov.winner_side_id : st.done ? st.winner : st.leader;
     const halved = m.ov ? !m.ov.winner_side_id : st.done && !st.winner;
     let big, small;
-    if (m.ov) { big = halved ? "½" : "WON"; small = m.ov.note || "final"; }
+    if (m.ov) { big = halved ? "HALF" : "WON"; small = m.ov.note || "final"; }
     else if (!st.done && !st.played) { big = "–"; small = r.tee_time ? fmtTime(r.tee_time) : "not started"; }
-    else if (st.done) { big = halved ? "½" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = halved ? "halved" : st.played ? "final" : "forfeit"; }
+    else if (st.done) { big = halved ? "HALF" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = halved ? "halved" : st.played ? "final" : "forfeit"; }
     else { big = st.up ? `${st.up} UP` : "AS"; small = `thru ${st.played}${st.up && st.up === st.left ? " · dormie" : ""}`; }
     const col = w ? side(w).color : "";
     const mine = [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me));
