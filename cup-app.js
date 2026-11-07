@@ -141,6 +141,7 @@
     $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
     $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
     $("cupRounds").innerHTML = all.map(({ r, ms }) => roundCard(r, ms)).join("");
+    if ($("fmtBody")) $("fmtBody").innerHTML = formatPage();
     badge();
     wire(); wireAlerts(); if (D.captainOf || adminOnly) checkAlerts();
   }
@@ -185,7 +186,46 @@
     } else {
       body = `<div class="rmatches">${ms.map(m => matchRow(r, m)).join("") || '<p class="updated">No matches.</p>'}</div>`;
     }
-    return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "final" ? "Final" : r.status === "revealed" ? "Live" : ""}</span></div><div class="updated">${esc(roundLine(r))}</div>${body}</div>`;
+    return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "final" ? "Final" : r.status === "revealed" ? "Live" : ""}</span></div><div class="updated">${esc(roundLine(r))}</div>${r.format ? `<a class="linkbtn" href="#cup-format" style="justify-self:start;display:inline-block;margin-top:4px">How ${esc(F[r.format].label)} is played and handicapped</a>` : ""}${body}</div>`;
+  }
+
+  // ---------- how it's played (menu page linked from each round) ----------
+  const MORE = {
+    four_ball: "Each golfer plays their own ball the whole way. On each hole, the lower net score from each side is that side's score.",
+    four_ball_agg: "Each golfer plays their own ball the whole way. On each hole, both partners' net scores are added together, and the lower total wins the hole.",
+    alternate_shot: "Partners play one ball and take turns hitting it. One partner tees off on the odd holes and the other on the even holes.",
+    greensome: "Both partners tee off. The side picks the better drive, and the partner whose drive wasn't picked hits the next shot. From there they take turns until the ball is holed.",
+    chapman: "Both partners tee off, then each hits the other's ball for the second shot. The side picks the better ball, and they take turns from there until it's holed.",
+    scramble: "Both partners hit every shot. The side picks the best ball each time, and both play their next shot from there, until the ball is holed.",
+    singles: "One golfer against one golfer, each playing their own ball."
+  };
+  function formatPage() {
+    if (!D) return "";
+    const rs = D.rounds.filter(r => r.format);
+    if (!rs.length) return `<div class="card pad"><p class="updated" style="margin:0">No format has been picked yet.</p></div>`;
+    return rs.map(r => {
+      const f = F[r.format], tee = C.teeFor(r, D.tbc, "Blue");
+      const ex = tee ? (() => { const raw = C.courseHcpRaw(10, tee, r.holes); return `For example, a golfer with a 10.0 index on the ${esc(tee.name)} tees (slope ${tee.slope}, rating ${(+tee.rating).toFixed(1)}, par ${tee.par}): 10.0${r.holes === 18 ? " × 2" : ""} × ${tee.slope} ÷ 113 + (${(+tee.rating).toFixed(1)} − ${tee.par}) = ${raw.toFixed(2)}, which rounds to <b>${Math.round(raw + 1e-9)}</b>.`; })() : "The worked example shows up once the round's course is set.";
+      const team = f.w ? (() => {
+        const egs = tee ? [C.courseHcpRaw(8, tee, r.holes), C.courseHcpRaw(16, tee, r.holes)] : null;
+        return `<h3 style="margin:12px 0 4px;font-size:15px">Team handicap</h3>
+          <p style="margin:0">The side plays one ball, so it gets one handicap: <b>${f.w[0]} × the lower course handicap + ${f.w[1]} × the higher</b>. The two course handicaps are used before rounding, and the team handicap is rounded once at the end.</p>
+          ${egs ? `<p class="updated" style="margin:6px 0 0">Example: partners with 8.0 and 16.0 indexes have course handicaps of ${egs[0].toFixed(2)} and ${egs[1].toFixed(2)}. ${f.w[0]} × ${egs[0].toFixed(2)} + ${f.w[1]} × ${egs[1].toFixed(2)} = ${(f.w[0] * egs[0] + f.w[1] * egs[1]).toFixed(2)}, so the team handicap is <b>${C.teamHcp(egs, f.w)}</b>.</p>` : ""}`;
+      })() : "";
+      return `<div class="card pad">
+        <div class="head"><p class="label">${esc(r.name)} · ${esc(f.label)}</p><span class="updated">${r.holes} holes</span></div>
+        <h3 style="margin:8px 0 4px;font-size:15px">How it's played</h3>
+        <p style="margin:0">${esc(MORE[r.format] || f.how)}</p>
+        <h3 style="margin:12px 0 4px;font-size:15px">Scoring</h3>
+        <p style="margin:0">Match play. On each hole the side with the lower net score wins the hole, and equal scores halve it. A match ends once one side is up by more holes than are left. A win is worth 1 point and a halved match is worth ½.</p>
+        <h3 style="margin:12px 0 4px;font-size:15px">Course handicap</h3>
+        <p style="margin:0">Each golfer's Cup index is frozen at the end of the league season. Course handicap = <b>index${r.holes === 18 ? " × 2" : ""} × slope ÷ 113 + (rating − par)</b>, using the golfer's own tees${r.holes === 18 && r.course2_id ? ". For two nines played together, the ratings and pars are added and the slopes averaged" : ""}.</p>
+        <p class="updated" style="margin:6px 0 0">${ex}</p>
+        ${team}
+        <h3 style="margin:12px 0 4px;font-size:15px">Strokes</h3>
+        <p style="margin:0">Strokes come off the lowest handicap in the match. The lowest ${f.ball === "one" ? "team" : "golfer"} plays off 0, and everyone else gets the difference. Those strokes go on the hardest holes first, by stroke index. If someone gets more strokes than there are holes, they go around again. The dots on the scorecard show where they fall.</p>
+      </div>`;
+    }).join("");
   }
 
   // ---------- my match ----------
