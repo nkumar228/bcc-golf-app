@@ -68,8 +68,9 @@ Deno.serve(async (req) => {
 
     if (body.action === "cup_turn") {
       const rid = Number(body.round_id);
-      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format").eq("id", rid).maybeSingle();
-      if (!r || r.status !== "lineups" || !r.format) return json({ sent: 0 });
+      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format,first_side_id").eq("id", rid).maybeSingle();
+      // Nothing to say until the format and the order are both picked
+      if (!r || r.status !== "lineups" || !r.format || (!r.blind && !r.first_side_id)) return json({ sent: 0 });
       const { data: cup } = await admin.from("cups").select("name").eq("id", r.cup_id).maybeSingle();
       let sides: number[] = [], what = "";
       if (r.blind) {
