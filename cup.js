@@ -30,7 +30,8 @@
   // Unrounded, so a team blend rounds only once at the end (as the league spreadsheet does).
   const courseHcpRaw = (index, tee, holes) => (+index || 0) * (holes === 18 ? 2 : 1) * tee.slope / 113 + (tee.rating - tee.par);
   const courseHcp = (index, tee, holes) => r0(courseHcpRaw(index, tee, holes));
-  const teamHcp = (chs, w) => { const s = [...chs].sort((a, b) => a - b); const lo = s[0], hi = s.length > 1 ? s[1] : s[0]; return r0(w[0] * lo + w[1] * hi); };
+  const teamHcpRaw = (chs, w) => { const s = [...chs].sort((a, b) => a - b); const lo = s[0], hi = s.length > 1 ? s[1] : s[0]; return w[0] * lo + w[1] * hi; };
+  const teamHcp = (chs, w) => r0(teamHcpRaw(chs, w));
 
   // Strokes on a hole: hardest holes first, by stroke index ranked within the holes played.
   function strokeRanks(holes) { const si = holes.map(h => h.si); return si.map(q => si.filter(z => z < q).length + 1); }
@@ -48,9 +49,9 @@
       const golfers = ids.map(pid => { const i = info(pid) || {}; const tee = teeFor(round, teesByCourse, i.tee); if (!holes && tee) holes = tee.holes; const raw = tee ? courseHcpRaw(i.index, tee, round.holes) : 0; return { pid, name: i.name || "?", index: +i.index || 0, tee, raw, ch: r0(raw) }; });
       if (!golfers.length) return;
       if (f.ball === "one") {
-        const h = f.w ? teamHcp(golfers.map(g => g.raw), f.w) : golfers[0].ch;
-        balls.push({ side: sd.id, key: golfers[0].pid, players: golfers.map(g => g.pid), label: golfers.map(g => g.name).join(" & "), golfers, hcp: h });
-      } else golfers.forEach(g => balls.push({ side: sd.id, key: g.pid, players: [g.pid], label: g.name, golfers: [g], hcp: g.ch }));
+        const raw = f.w ? teamHcpRaw(golfers.map(g => g.raw), f.w) : golfers[0].raw;
+        balls.push({ side: sd.id, key: golfers[0].pid, players: golfers.map(g => g.pid), label: golfers.map(g => g.name).join(" & "), golfers, raw, hcp: r0(raw) });
+      } else golfers.forEach(g => balls.push({ side: sd.id, key: g.pid, players: [g.pid], label: g.name, golfers: [g], raw: g.raw, hcp: g.ch }));
     });
     // Off the lowest: the lowest handicap in the match plays off 0 and everyone else gets the difference.
     const low = balls.length ? Math.min(...balls.map(b => b.hcp)) : 0;
@@ -106,5 +107,5 @@
     return { pts, live, final: false };
   }
 
-  window.Cup = { FORMATS, teeFor, courseHcp, courseHcpRaw, teamHcp, strokeRanks, strokesOn, setupMatch, matchStatus, points };
+  window.Cup = { FORMATS, teeFor, courseHcp, courseHcpRaw, teamHcp, teamHcpRaw, strokeRanks, strokesOn, setupMatch, matchStatus, points };
 })();

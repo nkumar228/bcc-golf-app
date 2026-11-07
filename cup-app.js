@@ -246,7 +246,7 @@
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
-    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 ? `team hcp ${b.hcp} (${b.golfers.map(g => g.ch).join(" & ")})` : `hcp ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
+    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.map(g => g.raw.toFixed(2)).join(" & ")})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
     const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "½" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
@@ -279,10 +279,11 @@
     const f = F[r.format]; if (!f || !a) return "";
     const ids = [a, f.pairs ? b : null].filter(Boolean), chs = ids.map(id => chOf(r, id));
     if (chs.some(x => x == null)) return "set the course to see handicaps";
-    if (!f.pairs) return `hcp ${chs[0]}`;
-    if (ids.length < 2) return `${last(ids[0])} ${chs[0]}`;
-    if (f.w) return `team hcp ${C.teamHcp(ids.map(id => chRaw(r, id)), f.w)} (${chs.join(" & ")})`;
-    return `hcps ${chs.join(" & ")}`;
+    const raws = ids.map(id => chRaw(r, id)), d = x => x.toFixed(2);
+    if (!f.pairs) return `hcp ${d(raws[0])} → ${chs[0]}`;
+    if (ids.length < 2) return `${last(ids[0])} ${d(raws[0])} → ${chs[0]}`;
+    if (f.w) { const t = C.teamHcpRaw(raws, f.w); return `team hcp ${d(t)} → ${Math.round(t + 1e-9)} (${raws.map(d).join(" & ")})`; }
+    return `hcps ${raws.map(d).join(" & ")} → ${chs.join(" & ")}`;
   }
   const names = (r, e) => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).map(esc).join(" & ") : "";
   const idxOf = id => { const c = D.cp.find(x => x.player_id === id); return c?.handicap_index != null ? ` (${(+c.handicap_index).toFixed(1)})` : ""; };
