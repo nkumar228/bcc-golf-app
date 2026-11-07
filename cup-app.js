@@ -28,7 +28,7 @@
       sb().from("cup_sides").select("*").eq("cup_id", cup.id).order("sort").order("id"),
       sb().from("cup_players").select("*").eq("cup_id", cup.id),
       sb().from("cup_rounds").select("*").eq("cup_id", cup.id).order("number"),
-      sb().from("players").select("id,first_name,last_name,default_tee,active"),
+      sb().from("players").select("id,first_name,last_name,default_tee,active,email,phone"),
       sb().from("tees").select("course_id,name,rating,slope,par,tee_holes(hole,par,yards,stroke_index)")
     ]);
     const rids = (rounds || []).map(r => r.id);
@@ -123,7 +123,7 @@
     $("evSub").textContent = cur ? `${cur.name} · ${roundLine(cur)}` : "Queen City Cup";
     const curCard = cur ? roundCard(cur, shown(cur) ? matchesOf(cur) : []) : "";
     const myLine = myRound ? (() => { const m = myMatch(myRound); return `<div class="card pad"><div class="head"><p class="label">Your match · ${esc(myRound.name)}</p></div><div class="cstat">${esc(m.st.text)}</div><a class="btn small" href="#score" style="justify-self:start;display:inline-block;margin-top:6px">Score my match</a></div>`; })() : "";
-    $("cupHome").innerHTML = `${ryderBoardHome()}${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
+    $("cupHome").innerHTML = `${myTurnCard(true)}${ryderBoardHome()}${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
     const next = D.rounds.find(r => r.status !== "final");
     const scoreRound = myRound || D.rounds.find(r => r.status === "revealed") || [...D.rounds].reverse().find(r => r.status === "final");
     $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
@@ -134,6 +134,7 @@
     $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
     $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
     $("cupRounds").innerHTML = all.map(({ r, ms }) => roundCard(r, ms)).join("");
+    badge();
     wire();
   }
   function roundLine(r) {
@@ -243,8 +244,12 @@
       <ul class="croster">${myPlayers.map(({ c, p }) => `<li><span>${esc(p.last_name)}, ${esc(p.first_name)}${c.is_captain ? ' <small class="pill">Captain</small>' : ""}</span><span class="updated">${c.handicap_index != null ? (+c.handicap_index).toFixed(2) : "–"}</span>${c.is_captain ? "<span></span>" : `<button class="linkbtn" type="button" data-drop="${p.id}" aria-label="Take ${esc(p.last_name)} off your side">Remove</button>`}</li>`).join("")}</ul>
       <div class="crow2"><select id="capAdd" style="flex:1 1 200px"><option value="">Add a player…</option>${addable.map(p => `<option value="${p.id}">${esc(p.last_name)}, ${esc(p.first_name)}${D.cp.some(c => c.player_id === p.id) ? " · sub" : ""}</option>`).join("")}</select><button class="btn small" type="button" id="capAddBtn">Add</button></div>
       <p class="updated" style="margin:6px 0 0">You only see your own side here. ${esc(other?.name || "")}'s captain builds theirs.</p></div>`;
-    const open = D.rounds.filter(r => r.status === "setup" || r.status === "lineups");
-    return roster + open.map(r => roundForCaptain(r, mine, other)).join("");
+    // Only the round in play: later rounds show up once this one is final.
+    const cur = D.rounds.find(r => r.status !== "final");
+    const body = !cur ? `<div class="card pad"><p class="updated" style="margin:0">Every round is final.</p></div>`
+      : cur.status === "revealed" ? `<div class="card pad"><p class="label">${esc(cur.name)}</p><p class="updated" style="margin:6px 0 0">Matches are set and being played. The next round shows up here once this one is final.</p></div>`
+      : roundForCaptain(cur, mine, other);
+    return myTurnCard() + roster + body;
   }
   function roundForCaptain(r, mine, other) {
     const f = F[r.format] || null, started = D.entries.some(e => e.round_id === r.id) || D.subs.some(s => s.round_id === r.id);
@@ -269,7 +274,7 @@
     const last = D.entries.filter(e => e.round_id === r.id).sort((x, y) => y.id - x.id)[0];
     let action;
     if (t.done) action = `<p class="updated"><b>Every match is set.</b> Waiting for the commissioner to reveal them.</p>`;
-    else if (t.side !== mine) action = `<p class="updated">Waiting for ${esc(sideName(t.side))} to ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}`}.</p>`;
+    else if (t.side !== mine) action = `<p class="updated">Waiting for ${esc(sideName(t.side))} to ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}`}.</p>${nudge(r, t)}`;
     else {
       const vs = t.throwing ? "" : ` against ${names(r, entryOf(r, D.sides.find(s => s.id !== mine).id, t.slot))}`;
       action = `<div class="cpick" data-round="${r.id}"><p style="margin:0"><b>Your turn:</b> ${t.throwing ? `throw out a ${unit} for match ${t.slot}` : `answer match ${t.slot}${vs}`}.</p>
@@ -279,6 +284,33 @@
     const undo = last && last.side_id === mine && r.status === "lineups" ? `<button class="linkbtn" type="button" data-undo="${r.id}">Take back my last pick</button>` : "";
     return `<p class="updated">Back and forth: one ${unit} at a time. Each pick shows up for both captains right away; everyone else sees the matches when they're revealed.</p><ol class="cbf">${rows}</ol>${action}${undo}<p class="si-err" id="cupErr${r.id}"></p>`;
   }
+  // Telling the other captain it's their turn: a ready-made text or email from the captain's own phone.
+  const APP = "https://nkumar228.github.io/bcc-golf-app/#captain";
+  function nudge(r, t) {
+    const caps = D.cp.filter(c => c.is_captain && c.side_id === t.side).map(c => P(c.player_id)).filter(Boolean);
+    if (!caps.length) return "";
+    const msg = `Your turn in the ${D.cup.name}, ${r.name}: ${t.throwing ? `throw out match ${t.slot}` : `answer match ${t.slot}`}. Open the captain page: ${APP}`;
+    const phones = caps.map(p => p.phone).filter(Boolean).join(","), emails = caps.map(p => p.email).filter(Boolean).join(",");
+    const who = caps.map(p => esc(p.first_name)).join(" & ");
+    return `<div class="crow2 nudge"><span class="updated">Let ${who} know:</span><a class="btn small secondary" href="sms:${encodeURIComponent(phones)}?&body=${encodeURIComponent(msg)}">Text</a>${emails ? `<a class="btn small secondary" href="mailto:${encodeURIComponent(emails)}?subject=${encodeURIComponent("Your Cup pick")}&body=${encodeURIComponent(msg)}">Email</a>` : ""}</div>`;
+  }
+  // Rounds where it's this captain's turn (back and forth) or picks are still to go in (blind)
+  function myTurns() {
+    const mine = D.captainOf; if (!mine) return [];
+    const cur = D.rounds.find(r => r.status !== "final");
+    if (!cur || cur.status !== "lineups" || !cur.format) return [];
+    if (cur.blind) return D.subs.some(s => s.round_id === cur.id && s.side_id === mine) ? [] : [{ r: cur, text: "put in your blind picks" }];
+    const t = turnOf(cur);
+    return t && !t.done && t.side === mine ? [{ r: cur, text: t.throwing ? `throw out match ${t.slot}` : `answer match ${t.slot}` }] : [];
+  }
+  function myTurnCard(link) {
+    const ts = myTurns();
+    return ts.map(x => `<${link ? 'a href="#captain"' : "div"} class="card pad yourturn"><b>Your turn to pick</b><span class="updated">${esc(x.r.name)}: ${esc(x.text)}</span></${link ? "a" : "div"}>`).join("");
+  }
+  function badge() {
+    try { const n = myTurns().length; if (n && navigator.setAppBadge) navigator.setAppBadge(n); else if (navigator.clearAppBadge) navigator.clearAppBadge(); } catch (e) {}
+  }
+
   function blindEditor(r, mine) {
     const pairs = pairsOf(r), submitted = D.subs.some(s => s.round_id === r.id && s.side_id === mine), n = matchCount(r);
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === mine);

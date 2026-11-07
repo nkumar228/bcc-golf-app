@@ -153,9 +153,24 @@
         <label>Matches</label><input class="w-num" type="number" min="1" max="30" data-rf="matches" value="${r.matches ?? ""}" placeholder="auto" title="Leave blank to use the size of the bigger side">
       </div>
       ${f ? `<p class="note" style="margin:6px 0 0">${esc(f.how)}${f.w ? ` Team handicap ${f.w[0]} × lower + ${f.w[1]} × higher.` : ""}</p>` : ""}
+      ${turnNote(r)}
       <div class="lu" style="margin-top:10px">${D.sides.map(s => lineupBox(r, s, done(s.id))).join("")}</div>
       ${locked ? matchTable(r) : ""}
     </div>`;
+  }
+  // Whose pick it is in a back-and-forth round, so an admin can fill in for a captain.
+  function turnNote(r) {
+    if (r.status !== "lineups" || r.blind || !r.first_side_id || !r.format) return r.status === "lineups" && r.blind ? `<p class="note" style="margin:6px 0 0">Blind: you can put in a captain's picks below for them; they still show as not submitted until you reveal.</p>` : "";
+    const f = F[r.format], a = r.first_side_id, b = D.sides.find(s => s.id !== a)?.id;
+    const size = Math.max(0, ...D.sides.map(s => D.cp.filter(c => c.side_id === s.id).length));
+    const n = r.matches || Math.max(1, Math.ceil(size / (f.pairs ? 2 : 1)));
+    const has = (sid, i) => D.entries.some(e => e.round_id === r.id && e.side_id === sid && e.slot === i && e.player_id);
+    for (let i = 1; i <= n; i++) {
+      const th = i % 2 ? a : b, an = i % 2 ? b : a;
+      const who = !has(th, i) ? [th, "throw out"] : !has(an, i) ? [an, "answer"] : null;
+      if (who) return `<p class="note" style="margin:6px 0 0"><b>Next pick: ${esc(sideName(who[0]))} to ${who[1]} match ${i}.</b> To pick for a captain, fill in ${esc(sideName(who[0]))}'s line ${i} below.</p>`;
+    }
+    return `<p class="note" style="margin:6px 0 0"><b>Every match is set.</b> Ready to reveal.</p>`;
   }
   function lineupBox(r, s, submitted) {
     const f = F[r.format] || F.singles, mine = D.cp.filter(c => c.side_id === s.id).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
