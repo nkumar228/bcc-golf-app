@@ -138,7 +138,8 @@ table.sc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular
 /* Queen City Cup */
 .cup-only { display: none !important; }
 body.cup-on .cup-only { display: block !important; }
-.captain-only { display: none !important; }
+.captain-only, .admin-only { display: none !important; }
+body.is-admin .admin-only { display: block !important; }
 /* Cup mode takes over Home and Score: hide the league-night content there */
 body.cup-on #v-home > :not(#cupHome), body.cup-on #v-score > :not(#cupScore) { display: none !important; }
 body.cup-on .cup-take { display: grid !important; gap: 12px; }
@@ -495,6 +496,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <a href="#captain" class="captain-only">Captain page</a>
     <a href="#rounds" class="cup-only">League rounds</a>
     <a href="#cup-history">QCC Cup history</a>
+    <a href="admin.html" class="admin-only">Admin site</a>
     <a href="#rules">League rules</a>
     <a href="#skins-games">Skins winners</a>
     <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
