@@ -186,7 +186,7 @@
     } else {
       body = `<div class="rmatches">${ms.map(m => matchRow(r, m)).join("") || '<p class="updated">No matches.</p>'}</div>`;
     }
-    return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "final" ? "Final" : r.status === "revealed" ? "Live" : ""}</span></div><div class="updated">${esc(roundLine(r))}</div>${r.format ? `<a class="linkbtn" href="#cup-format" style="justify-self:start;display:inline-block;margin-top:4px">How ${esc(F[r.format].label)} is played and handicapped</a>` : ""}${body}</div>`;
+    return `<div class="card pad"><div class="head"><p class="label">${esc(r.name)}</p><span class="updated">${r.status === "final" ? "Final" : r.status === "revealed" ? "Live" : ""}</span></div><div class="updated">${esc(roundLine(r))}</div>${r.format ? `<a class="linkbtn" href="#cup-format" data-fr="${r.id}" style="justify-self:start;display:inline-block;margin-top:4px">How ${esc(F[r.format].label)} is played and handicapped</a>` : ""}${body}</div>`;
   }
 
   // ---------- how it's played (menu page linked from each round) ----------
@@ -199,9 +199,13 @@
     scramble: "Both partners hit every shot. The side picks the best ball each time, and both play their next shot from there, until the ball is holed.",
     singles: "One golfer against one golfer, each playing their own ball."
   };
+  // The page shows one round: the one whose link was tapped, else the round in play now.
+  let fmtRound = null;
+  document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("[data-fr]"); if (a) { fmtRound = +a.dataset.fr; if ($("fmtBody")) $("fmtBody").innerHTML = formatPage(); } });
   function formatPage() {
     if (!D) return "";
-    const rs = D.rounds.filter(r => r.format);
+    const cur = D.rounds.find(r => r.id === fmtRound && r.format) || D.rounds.find(r => r.status !== "final" && r.format) || [...D.rounds].reverse().find(r => r.format);
+    const rs = cur ? [cur] : [];
     if (!rs.length) return `<div class="card pad"><p class="updated" style="margin:0">No format has been picked yet.</p></div>`;
     return rs.map(r => {
       const f = F[r.format], tee = C.teeFor(r, D.tbc, "Blue");
