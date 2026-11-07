@@ -158,7 +158,7 @@
     let big, small;
     if (m.ov) { big = halved ? "HALF" : "WON"; small = m.ov.note || "final"; }
     else if (!st.done && !st.played) { big = "–"; small = r.tee_time ? fmtTime(r.tee_time) : "not started"; }
-    else if (st.done) { big = halved ? "HALF" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = halved ? "halved" : st.played ? "final" : "forfeit"; }
+    else if (st.done) { big = halved ? "HALF" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = st.played || halved ? "final" : "forfeit"; }
     else { big = st.up ? `${st.up} UP` : "AS"; small = `thru ${st.played}${st.up && st.up === st.left ? " · dormie" : ""}`; }
     const col = w ? side(w).color : "";
     const mine = [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me));
@@ -247,7 +247,7 @@
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
     const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.map(g => g.raw.toFixed(2)).join(" & ")})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
-    const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "½" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
+    const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "–" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
       <div class="cstat" id="cupStat">${esc(m.st.text)}</div>
