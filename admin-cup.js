@@ -129,6 +129,11 @@
         <label style="font-weight:600">Name</label><input id="cupName" value="${esc(cup.name)}" style="width:220px">
         <label style="font-weight:600">Defending side</label><select id="cupDef">${sideOpts(cup.defending_side_id, "Not set")}</select>
       </div>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn secondary" type="button" id="cupReset">Reset this Cup</button>
+        <button class="btn secondary" type="button" id="cupDelete">Delete this Cup</button>
+        <span class="note" style="margin:0">Reset keeps sides, players, captains, handicaps and round dates and courses, and clears all lineups, picks, scores, results and availability. Use it after testing.</span>
+      </div>
       <div class="scroll"><table><thead><tr><th>Side</th><th>Color</th><th>Captains</th><th>Players</th></tr></thead><tbody>
         ${D.sides.map(s => `<tr data-side="${s.id}"><td><input data-sf="name" value="${esc(s.name)}" style="width:120px"></td><td><input data-sf="color" type="color" value="${esc(s.color)}" style="width:52px;padding:2px"></td>
           <td>${D.cp.filter(c => c.side_id === s.id && c.is_captain).map(c => esc(P(c.player_id)?.last_name || "?")).join(", ") || '<span class="note" style="margin:0">Tick Captain below</span>'}</td>
@@ -229,6 +234,24 @@
       if (e.target.checked && cups.some(c => c.active && c.id !== cup.id)) await sb.from("cups").update({ active: false }).neq("id", cup.id);
       const { error } = await sb.from("cups").update({ active: e.target.checked }).eq("id", cup.id);
       if (check(error, e.target.checked ? "Cup mode is on in the app" : "Cup mode is off")) loadCups(cup.id);
+    };
+    $("cupReset").onclick = async () => {
+      if (prompt(`Reset ${cup.name}? Every lineup, pick, score, result and availability mark is deleted and all rounds go back to setup. Sides, players, captains and handicaps stay. Type RESET to confirm.`) !== "RESET") return;
+      const rids = D.rounds.map(r => r.id);
+      if (rids.length) for (const t of ["cup_scores", "cup_match_overrides", "cup_submissions", "cup_entries", "cup_availability"]) {
+        const { error } = await sb.from(t).delete().in("round_id", rids); if (!check(error, "")) return;
+      }
+      for (const r of D.rounds) {
+        const { error } = await sb.from("cup_rounds").update({ status: "setup", revealed_at: null, blind: false, first_side_id: null, format: r.allow_blind ? "singles" : null }).eq("id", r.id);
+        if (!check(error, "")) return;
+      }
+      toast(`${cup.name} reset`); loadCup();
+    };
+    $("cupDelete").onclick = async () => {
+      if (prompt(`Delete ${cup.name} completely, with its sides, players, rounds and scores? Cup history entries stay. Type DELETE to confirm.`) !== "DELETE") return;
+      await sb.from("cups").update({ defending_side_id: null }).eq("id", cup.id);
+      const { error } = await sb.from("cups").delete().eq("id", cup.id);
+      if (check(error, `${cup.name} deleted`)) { cup = null; loadCups(); }
     };
     $("cupName").onchange = async e => { const { error } = await sb.from("cups").update({ name: e.target.value.trim() }).eq("id", cup.id); if (check(error)) loadCups(cup.id); };
     $("cupDef").onchange = async e => { const { error } = await sb.from("cups").update({ defending_side_id: +e.target.value || null }).eq("id", cup.id); if (check(error)) cup.defending_side_id = +e.target.value || null; };
