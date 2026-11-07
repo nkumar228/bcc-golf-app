@@ -160,7 +160,7 @@
     const firstVal = r.blind ? "blind" : r.first_side_id ?? "";
     const act = { setup: `<button class="btn" type="button" data-st="lineups"${r.course_id ? "" : ' title="Pick a course first"'}>Open lineups</button>${r.course_id ? "" : '<span class="note" style="margin:0">Pick a course first</span>'}`,
       lineups: `<button class="btn" type="button" data-reveal${D.sides.every(s => done(s.id)) ? "" : ` data-early="${r.blind ? "Not every lineup is submitted." : "Not every match is set yet."}"`}>Reveal matchups</button><button class="btn secondary" type="button" data-st="setup">Close lineups</button>`,
-      revealed: `<button class="btn" type="button" data-st="final">Mark final</button><button class="btn secondary" type="button" data-st="lineups">Hide again</button>`,
+      revealed: `<button class="btn" type="button" data-st="final">Mark final</button><button class="btn secondary" type="button" data-st="lineups">Hide again</button>${D.scores.some(x => x.round_id === r.id) ? '<button class="btn secondary" type="button" data-clear>Clear all scores</button>' : ""}`,
       final: `<button class="btn secondary" type="button" data-st="revealed">Reopen</button>` }[r.status];
     return `<div class="box" data-round="${r.id}" style="border:1px solid var(--line);border-radius:12px;padding:12px">
       <div class="row" style="justify-content:space-between"><div class="row"><input data-rf="name" value="${esc(r.name)}" style="width:120px;font-weight:600"><span class="pill${r.status === "lineups" ? " warn" : ""}">${STATUS[r.status]}</span></div><div class="row">${act}</div></div>
@@ -289,6 +289,13 @@
           loadCup();
         }
       });
+      const cl = box.querySelector("[data-clear]");
+      if (cl) cl.onclick = async () => {
+        const n = D.scores.filter(x => x.round_id === r.id).length;
+        if (prompt(`Delete all ${n} scores for ${r.name}? Matches go back to not started. This can't be undone. Type CLEAR to confirm.`) !== "CLEAR") return;
+        const { error } = await sb.from("cup_scores").delete().eq("round_id", r.id);
+        if (check(error, "All scores cleared")) loadCup();
+      };
       const rv = box.querySelector("[data-reveal]");
       if (rv) rv.onclick = async () => {
         if (rv.dataset.early && !confirm(rv.dataset.early + " Reveal anyway?")) return;

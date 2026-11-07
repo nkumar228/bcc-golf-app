@@ -218,6 +218,7 @@ tr.inc td { color: var(--bad); }
       <div class="row" style="margin-top:14px">
         <button class="btn" type="button" id="wkFinal">Finalize this week</button>
         <button class="btn secondary" type="button" id="wkReopen" hidden>Reopen this week</button>
+        <button class="btn secondary" type="button" id="wkClear">Clear all scores</button>
         <span class="err" id="wkWarn"></span>
       </div>
     </section>
@@ -794,7 +795,7 @@ tr.inc td { color: var(--bad); }
     $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th>Result</th><th class="num">Team pts</th></tr></thead><tbody>` +
       tOrder.map(t => `<tr><td><b>${tLabel(t.team_id)}</b></td><td class="note">${tLabel(t.opponent_id)}</td><td class="num">${t.team_net}</td><td>${t.match_points === season.team_win ? "Win" : t.match_points === season.team_tie ? "Tie" : "Loss"}</td><td class="num"><b>${t.total}</b></td></tr>`).join("") + `</tbody>`;
     $("wkWarn").textContent = !final && incomplete.length ? `${incomplete.length} golfer${incomplete.length === 1 ? " hasn't" : "s haven't"} finished: ${incomplete.map(r => pLabel(r.player_id)).join(", ")}. Fix their scores or swap in a ghost before finalizing.` : "";
-    $("wkFinal").hidden = final; $("wkReopen").hidden = !final;
+    $("wkFinal").hidden = final; $("wkReopen").hidden = !final; $("wkClear").hidden = final || !wk.scores.length;
     $("wkFinal").disabled = !!incomplete.length || wk.ev.status === "rained_out";
   }
   $("wkFinal").onclick = async () => {
@@ -811,6 +812,14 @@ tr.inc td { color: var(--bad); }
     if (!check(r.error, "")) return;
     r = await sb.from("events").update({ status: "final" }).eq("id", ev.id); if (!check(r.error, `Week ${ev.number} is final`)) return;
     ev.status = "final"; renderEvents(); renderWeekEvents();
+  };
+  // Start a week's scoring over (e.g. a half-played week that has to be replayed)
+  $("wkClear").onclick = async () => {
+    const ev = wk.ev; if (!ev || ev.status === "final") return;
+    const n = wk.scores.length;
+    if (prompt(`Delete all ${n} scores for week ${ev.number}? This can't be undone. Type CLEAR to confirm.`) !== "CLEAR") return;
+    const { error } = await sb.from("scores").delete().eq("event_id", ev.id);
+    if (check(error, "All scores cleared")) { wk.scores = []; renderScores(); renderResults(); }
   };
   $("wkReopen").onclick = async () => {
     const ev = wk.ev;
@@ -935,7 +944,7 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=41"></script>
-<script src="admin-cup.js?v=41"></script>
+<script src="cup.js?v=42"></script>
+<script src="admin-cup.js?v=42"></script>
 </body>
 </html>
