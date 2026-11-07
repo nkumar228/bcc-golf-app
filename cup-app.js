@@ -202,7 +202,7 @@
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
-    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
+    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 ? `team hcp ${b.hcp} (${b.golfers.map(g => g.ch).join(" & ")})` : `hcp ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
     const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "½" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
