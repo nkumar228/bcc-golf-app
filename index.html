@@ -1103,6 +1103,8 @@ the spirit, intent, and fairness of league competition.</p>
 
   const $ = id => document.getElementById(id);
   let group = PLAYERS.filter(p => p.group);
+  let leagueWhole = false;
+  const editable = () => { const me = group.find(p => p.you); return LIVE && me && !leagueWhole ? group.filter(p => p.teamId === me.teamId) : group; };
   const fmtToPar = v => v === 0 ? "E" : (v > 0 ? "+" + v : String(v));
   const cls = v => v < 0 ? "u" : (v > 0 ? "o" : "");
   const LOCK = '<svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
@@ -1139,7 +1141,15 @@ the spirit, intent, and fairness of league competition.</p>
     $("fYds").textContent = COURSE.yds[i];
     $("fHcp").textContent = COURSE.hcp[i];
     const rows = $("rows"); rows.innerHTML = "";
-    group.forEach(pl => {
+    // By default you score yourself and your teammate; a switch opens the whole group.
+    if (LIVE && group.some(p => p.you)) {
+      const t = document.createElement("label");
+      t.className = "row"; t.style.cssText = "gap:6px;margin:0 0 6px;font-size:14px";
+      t.innerHTML = `<input type="checkbox"${leagueWhole ? " checked" : ""}> Score for the whole group`;
+      t.querySelector("input").onchange = e => { leagueWhole = e.target.checked; renderHole(); };
+      rows.appendChild(t);
+    }
+    editable().forEach(pl => {
       const st = strokesOn(pl.h, i, pl.rank);
       const v = pending[pl.id];
       const diff = v - COURSE.par[i];
@@ -1297,14 +1307,14 @@ the spirit, intent, and fairness of league competition.</p>
   $("saveBtn").onclick = async () => {
     const i = state.hole;
     if (LIVE) {
-      const entries = group.map(pl => ({ pid: pl.id, strokes: pending[pl.id], ...pending.st[pl.id] }));
+      const entries = editable().map(pl => ({ pid: pl.id, strokes: pending[pl.id], ...pending.st[pl.id] }));
       $("saveBtn").disabled = true; $("toast").textContent = "Saving…";
       const err = await LIVE.save(i, entries);
       $("saveBtn").disabled = false;
       if (err) { $("toast").textContent = "Couldn't save. Check your signal and tap Save again."; return; }
       entries.forEach(e => { state.scores[e.pid][i] = e.strokes; state.putts[e.pid][i] = e.putts; state.fir[e.pid][i] = e.fir; state.gir[e.pid][i] = e.gir; });
       state.saved.add(i);
-      $("toast").textContent = `Hole ${holeLabel(i)} saved for everyone.`;
+      $("toast").textContent = `Hole ${holeLabel(i)} saved${editable().length < group.length ? " for you and your teammate" : " for the group"}.`;
       if (i < 8) state.hole = i + 1;
       loadPending(); stamp(); renderAll(group.map(p => p.id));
       return;
