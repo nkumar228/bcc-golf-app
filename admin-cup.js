@@ -150,12 +150,22 @@
       ${availTable()}
 
       <h3 style="margin:18px 0 8px;font-size:15px">Rounds</h3>
-      <div style="display:grid;gap:12px">${D.rounds.map(roundBox).join("")}</div>
+      ${roundTabs()}
       <div class="row" style="margin-top:10px"><button class="btn secondary" type="button" id="cupAddRound">Add a round</button></div>`;
     wire();
   }
   const fmtPts = v => v % 1 ? `${Math.floor(v) || ""}½` : String(v);
 
+  // One round at a time: a round's tab opens once every round before it is final.
+  let selRound = null;
+  function roundTabs() {
+    const rs = [...D.rounds].sort((a, b) => a.number - b.number);
+    if (!rs.length) return "";
+    const open = r => rs.filter(x => x.number < r.number).every(x => x.status === "final");
+    if (!rs.some(r => r.id === selRound && open(r))) selRound = (rs.find(r => r.status !== "final") || rs[rs.length - 1]).id;
+    const tabs = rs.map(r => { const ok = open(r), on = r.id === selRound; return `<button type="button" class="btn${on ? "" : " secondary"}" data-rtab="${r.id}"${ok ? "" : ` disabled title="Opens once ${esc(rs.filter(x => x.number < r.number && x.status !== "final").map(x => x.name).join(", "))} is final"`}>${esc(r.name)}${r.status === "final" ? " ✓" : ok ? "" : " 🔒"}</button>`; }).join("");
+    return `<div class="row" style="margin-bottom:10px;gap:6px">${tabs}</div>${roundBox(rs.find(r => r.id === selRound))}`;
+  }
   function roundBox(r) {
     const subs = D.subs.filter(s => s.round_id === r.id), done = id => r.blind ? subs.some(s => s.side_id === id) : turnNote(r).includes("Every match is set");
     const courseOpts = sel => `<option value="">–</option>` + A.courses.map(c => `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${esc(c.name)}</option>`).join("");
@@ -283,6 +293,7 @@
     };
     body.querySelectorAll("#cupAvail [data-av]").forEach(el => el.onchange = () => saveAvail(+el.dataset.av, +el.closest("tr").dataset.p, { available: el.checked }));
     body.querySelectorAll("#cupAvail [data-sub]").forEach(el => el.onchange = () => saveAvail(+el.dataset.sub, +el.closest("tr").dataset.p, { sub_side_id: +el.value || null, available: true }));
+    body.querySelectorAll("[data-rtab]").forEach(b => b.onclick = () => { selRound = +b.dataset.rtab; render(); });
     $("cupAddRound").onclick = async () => {
       const n = Math.max(0, ...D.rounds.map(r => r.number)) + 1;
       const { error } = await sb.from("cup_rounds").insert({ cup_id: cup.id, number: n, name: `Round ${n}`, holes: 9, status: "setup" }); if (check(error, "Round added")) loadCup();
