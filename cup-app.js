@@ -126,6 +126,12 @@
     $("cupHome").innerHTML = `${myTurnCard(true)}${ryderBoardHome()}${myLine}${curCard}${D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and picks</span></a>` : ""}`;
     const next = D.rounds.find(r => r.status !== "final");
     const scoreRound = myRound || D.rounds.find(r => r.status === "revealed") || [...D.rounds].reverse().find(r => r.status === "final");
+    const isAdmin = !!ses()?.admin, liveRound = D.rounds.find(r => r.status === "revealed");
+    if (isAdmin && liveRound) {
+      const ms = matchesOf(liveRound), mine = myMatch(liveRound), pick = (adminSlot != null && ms.find(m => m.slot === adminSlot)) || null;
+      const cur = pick || mine;
+      $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + adminPicker(liveRound, cur) + (cur ? scorer(liveRound, cur) : "") + roundCard(liveRound, ms);
+    } else
     $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
@@ -184,15 +190,22 @@
 
   // ---------- my match ----------
   const myMatch = r => matchesOf(r).find(m => [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me)));
-  function scorer(r) {
-    const m = myMatch(r); if (!m) return "";
+  // Admins can score any match (for testing or helping a group): pick it from a list.
+  let adminSlot = null;
+  function adminPicker(r, cur) {
+    const ms = matchesOf(r); if (!ms.length) return "";
+    const nm = e => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).join(" & ") : "absent";
+    return `<div class="card pad"><label class="crow"><span>Admin: score match</span><select id="cupAdminSlot">${cur ? "" : '<option value="">Pick a match…</option>'}${ms.map(m => `<option value="${m.slot}"${cur && cur.slot === m.slot ? " selected" : ""}>${m.slot}. ${esc(nm(m.ea))} v ${esc(nm(m.eb))}</option>`).join("")}</select></label></div>`;
+  }
+  function scorer(r, picked) {
+    const m = picked || myMatch(r); if (!m) return "";
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
     const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
     const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "½" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
-    return `<div class="card pad"><div class="head"><p class="label">Your match · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
+    return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
       <div class="cstat" id="cupStat">${esc(m.st.text)}</div>
       <p class="updated" style="margin:0 0 8px">${f?.ball === "one" ? "One score per side per hole." : "Each golfer's own score."} Dots show handicap strokes, off the lowest in the match. Saves as you type.</p>
       <div class="gridwrap"><table class="csc" data-slot="${m.slot}" data-round="${r.id}"><thead><tr><th>Hole</th>${head}<th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -418,6 +431,7 @@
       if (error) { $("cupErr" + rid).textContent = error.message; return; }
       pingTurn(rid); load();
     });
+    if ($("cupAdminSlot")) $("cupAdminSlot").onchange = e => { adminSlot = +e.target.value || null; render(); };
     document.querySelectorAll(".csc").forEach(tb => tb.querySelectorAll("input.cin").forEach(el => el.onchange = async () => {
       const v = parseInt(el.value, 10), rid = +tb.dataset.round, slot = +tb.dataset.slot;
       const key = { round_id: rid, side_id: +el.dataset.side, slot, player_id: +el.dataset.key, hole: +el.dataset.hole };
