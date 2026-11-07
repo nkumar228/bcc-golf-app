@@ -158,7 +158,7 @@
     const locked = r.status === "revealed" || r.status === "final";
     const f = F[r.format];
     const firstVal = r.blind ? "blind" : r.first_side_id ?? "";
-    const act = { setup: `<button class="btn" type="button" data-st="lineups">Open lineups</button>`,
+    const act = { setup: `<button class="btn" type="button" data-st="lineups"${r.course_id ? "" : ' title="Pick a course first"'}>Open lineups</button>${r.course_id ? "" : '<span class="note" style="margin:0">Pick a course first</span>'}`,
       lineups: `<button class="btn" type="button" data-reveal${D.sides.every(s => done(s.id)) ? "" : ` data-early="${r.blind ? "Not every lineup is submitted." : "Not every match is set yet."}"`}>Reveal matchups</button><button class="btn secondary" type="button" data-st="setup">Close lineups</button>`,
       revealed: `<button class="btn" type="button" data-st="final">Mark final</button><button class="btn secondary" type="button" data-st="lineups">Hide again</button>`,
       final: `<button class="btn secondary" type="button" data-st="revealed">Reopen</button>` }[r.status];
@@ -278,6 +278,7 @@
       };
       box.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
         const st = b.dataset.st;
+        if (st === "lineups" && r.status === "setup" && !r.course_id) { alert("Pick a course for this round before opening lineups. Handicaps and scoring need it."); return; }
         if (st === "lineups" && r.status === "setup" && (!r.format || (!r.first_side_id && !r.blind)) && !confirm("The format or who goes first isn't picked yet. Captains can still pick them in the app. Open lineups anyway?")) return;
         if (st === "lineups" && r.status === "revealed" && !confirm("Hide the matchups again? Scores already entered stay.")) return;
         const { error } = await sb.from("cup_rounds").update({ status: st }).eq("id", r.id); if (check(error, STATUS[st])) { if (st === "lineups") pingTurn(r.id); loadCup(); }
