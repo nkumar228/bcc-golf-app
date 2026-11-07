@@ -85,6 +85,7 @@
     const left = n - played, leader = lead > 0 ? A : lead < 0 ? B : null, up = Math.abs(lead);
     let done = false, winner = null, text;
     if (!hasA || !hasB) { done = true; winner = hasA ? A : hasB ? B : null; text = winner ? `${sideName(winner)} wins by forfeit` : "No match"; }
+    else if (!n) text = "Set the course to score this match";
     else if (up > left) { done = true; winner = leader; text = left ? `${sideName(winner)} wins ${up}&${left}` : `${sideName(winner)} wins ${up} up`; }
     else if (!left) { done = true; text = "Halved"; }
     else if (!played) text = "Not started";
