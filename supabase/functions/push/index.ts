@@ -43,6 +43,13 @@ Deno.serve(async (req) => {
       return n;
     };
 
+    // Every lineup is in: tell the admins it's time to reveal
+    const ready = async (r: { id: number; name: string }, cupName?: string) => {
+      const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
+      const ids = (admins ?? []).map((a) => a.user_id as string).filter((x) => x !== u.user!.id);
+      return await send(ids, { title: "Ready to reveal", body: `${cupName ?? "Queen City Cup"}, ${r.name}: every lineup is in. Reveal the matchups in the admin Cup tab.`, url: APP + "admin.html", tag: `cup-ready-${r.id}` });
+    };
+
     if (body.action === "test") return json({ sent: await send([u.user.id], { title: "BCC Golf", body: "Alerts are on. You'll get one when it's your turn to pick.", url: APP + "#captain", tag: "test" }) });
 
     if (body.action === "cup_turn") {
@@ -56,10 +63,11 @@ Deno.serve(async (req) => {
         const { data: done } = await admin.from("cup_submissions").select("side_id").eq("round_id", rid);
         sides = (all ?? []).map((s) => s.id).filter((id) => !(done ?? []).some((d) => d.side_id === id));
         what = "put in your blind picks";
+        if (!sides.length) return json({ sent: await ready(r, cup?.name) });
       } else {
         const { data: t } = await admin.rpc("cup_turn", { p_round: rid });
         const turn = Array.isArray(t) ? t[0] : t;
-        if (!turn?.side_id) return json({ sent: 0 });
+        if (!turn?.side_id) return json({ sent: await ready(r, cup?.name) });
         const { data: thrown } = await admin.from("cup_entries").select("id").eq("round_id", rid).eq("slot", turn.slot).not("player_id", "is", null);
         sides = [turn.side_id];
         what = (thrown ?? []).length ? `answer match ${turn.slot}` : `throw out match ${turn.slot}`;

@@ -52,6 +52,8 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 0 32px;
+  /* The status bar sits over the page on iPhone Home Screen apps: start below it so the sticky header doesn't cover the top of the page */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--green); }
 .app { max-width: 480px; margin: 0 auto; display: grid; gap: 14px; }
@@ -2128,8 +2130,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=24"></script>
-<script src="cup-app.js?v=24"></script>
+<script src="cup.js?v=25"></script>
+<script src="cup-app.js?v=25"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });

@@ -129,13 +129,14 @@
     $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
     $("cupTitle").textContent = D.cup.name;
     $("cupBoard").innerHTML = board;
-    $("cupMine").innerHTML = "";
+    const s = ses(), adminOnly = !!(s && s.admin) && !D.captainOf;
+    $("cupMine").innerHTML = adminOnly ? alertsCard() : "";
     document.body.classList.toggle("is-captain", !!D.captainOf);
     $("cupCaptain").innerHTML = D.captainOf ? `<a class="card pad caplink" href="#captain"><b>Captain page</b><span class="updated">Your side, formats, order and lineups</span></a>` : "";
     $("capBody").innerHTML = D.captainOf ? captainPage() : '<div class="card pad"><p class="updated" style="margin:0">Only captains can use this page.</p></div>';
     $("cupRounds").innerHTML = all.map(({ r, ms }) => roundCard(r, ms)).join("");
     badge();
-    wire(); wireAlerts(); if (D.captainOf) checkAlerts();
+    wire(); wireAlerts(); if (D.captainOf || adminOnly) checkAlerts();
   }
   function roundLine(r) {
     const f = F[r.format];
@@ -301,7 +302,7 @@
   function alertsCard() {
     const st = alertState, msg = {
       on: `<b>Turn alerts are on</b> for this phone.<br><button class="linkbtn" type="button" id="alertTest">Send me a test</button> · <button class="linkbtn" type="button" id="alertOff">Turn off</button>`,
-      off: `<b>Get an alert when it's your turn to pick.</b><br><button class="btn small" type="button" id="alertOn" style="margin-top:8px">Turn on alerts</button>`,
+      off: `<b>Get an alert when it's your turn to pick${ses()?.admin ? " and when matchups are ready to reveal" : ""}.</b><br><button class="btn small" type="button" id="alertOn" style="margin-top:8px">Turn on alerts</button>`,
       denied: `<b>Alerts are blocked</b> for this app. Turn notifications back on for it in your phone's settings, then come back here.`,
       "ios-install": `<b>Want an alert when it's your turn?</b> On iPhone, add the app to your Home Screen first (Share, then Add to Home Screen) and open it from there. The button to turn alerts on shows up there.`,
       nosupport: `This browser can't show alerts. Open the app in Chrome (Android) or from your Home Screen (iPhone).`
@@ -415,7 +416,7 @@
       if (!confirm(`Submit ${es.length} ${f.pairs ? "teams" : "players"}? You can't change them after this unless the commissioner unlocks it.`)) return;
       busy = true; const { error } = await sb().rpc("cup_submit", { p_round: rid, p_side: D.captainOf }); busy = false;
       if (error) { $("cupErr" + rid).textContent = error.message; return; }
-      load();
+      pingTurn(rid); load();
     });
     document.querySelectorAll(".csc").forEach(tb => tb.querySelectorAll("input.cin").forEach(el => el.onchange = async () => {
       const v = parseInt(el.value, 10), rid = +tb.dataset.round, slot = +tb.dataset.slot;
