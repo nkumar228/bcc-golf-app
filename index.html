@@ -1522,7 +1522,7 @@ the spirit, intent, and fairness of league competition.</p>
           if (!r.p) return;
           const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
-          players.push({ id: r.p.id, name: `${r.p.last_name}, ${r.p.first_name}`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub });
+          players.push({ id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub });
         });
       });
       const mine = players.find(p => p.you) || players.find(p => p.group);
@@ -1532,7 +1532,7 @@ the spirit, intent, and fairness of league competition.</p>
       const scores = {};
       (scoreRows || []).forEach(r => { (scores[r.player_id] = scores[r.player_id] || {})[r.hole] = r; });
       const teamName = t => t ? `#${t.number} ${esc(t.name)}` : "";
-      const names = tid => { const t = teamById.get(tid); return t ? rosterOf(t).map(r => r.ghost ? "Ghost" : esc(r.p?.last_name || "")).join(" · ") : ""; };
+      const names = tid => { const t = teamById.get(tid); return t ? rosterOf(t).map(r => r.ghost ? "Ghost" : esc(r.p ? `${r.p.first_name} ${(r.p.last_name || "?")[0]}.` : "")).join(" · ") : ""; };
       // header and group card
       if (!document.body.classList.contains("cup-on")) $("evTitle").textContent = `${season.name} · Week ${ev.number}`;
       if (!document.body.classList.contains("cup-on")) $("evSub").textContent = `${fmtDate(ev.play_date)} · ${course?.name || ""} · ${myTee?.name || "Blue"} tees`;
@@ -2147,8 +2147,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=45"></script>
-<script src="cup-app.js?v=45"></script>
+<script src="cup.js?v=46"></script>
+<script src="cup-app.js?v=46"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });

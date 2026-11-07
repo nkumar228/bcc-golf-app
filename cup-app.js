@@ -11,7 +11,9 @@
   const side = id => D.sides.find(s => s.id === id);
   const sideName = id => side(id)?.name || "?";
   const P = id => D.players.get(id);
-  const last = id => P(id)?.last_name || "?";
+  // Short name for scorecards and matchups: first name and last initial (several golfers share a last name)
+  const short = p => p ? `${p.first_name || ""} ${(p.last_name || "?")[0]}.`.trim() : "?";
+  const last = id => short(P(id));
   const dot = s => `<i class="cdot" style="background:${esc(s?.color || "#888")}"></i>`;
 
   async function load() {
@@ -91,7 +93,7 @@
     const [sa, sb_] = D.sides; if (!sa || !sb_) return [];
     const es = D.entries.filter(e => e.round_id === r.id), n = Math.max(0, ...es.map(e => e.slot));
     const sc = new Map(D.scores.filter(s => s.round_id === r.id).map(s => [`${s.side_id}:${s.player_id}:${s.hole}`, s.strokes]));
-    const info = pid => { const p = P(pid), c = D.cp.find(x => x.player_id === pid); return { name: p?.last_name || "?", index: c?.handicap_index ?? 0, tee: p?.default_tee || "Blue" }; };
+    const info = pid => { const p = P(pid), c = D.cp.find(x => x.player_id === pid); return { name: short(p), index: c?.handicap_index ?? 0, tee: p?.default_tee || "Blue" }; };
     const out = [];
     for (let slot = 1; slot <= n; slot++) {
       const ea = es.find(e => e.side_id === sa.id && e.slot === slot && e.player_id), eb = es.find(e => e.side_id === sb_.id && e.slot === slot && e.player_id);
