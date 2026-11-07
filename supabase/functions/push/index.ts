@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // Every lineup is in: tell the admins it's time to reveal
     const ready = async (r: { id: number; name: string }, cupName?: string) => {
       const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
-      const ids = (admins ?? []).map((a) => a.user_id as string).filter((x) => x !== u.user!.id);
+      const ids = (admins ?? []).map((a) => a.user_id as string); // the admin who made the last pick gets it too, as a confirmation
       return await send(ids, { title: "Ready to reveal", body: `${cupName ?? "Queen City Cup"}, ${r.name}: every lineup is in. Reveal the matchups in the admin Cup tab.`, url: APP + "admin.html", tag: `cup-ready-${r.id}` });
     };
 
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       const label: Record<string, string> = { four_ball: "Four Ball", four_ball_agg: "Four Ball Aggregate", alternate_shot: "Alternate Shot", greensome: "Greensome", chapman: "Chapman", scramble: "Scramble", singles: "Singles" };
       const order = r.blind ? "blind picks" : `${first?.name ?? "?"} goes first`;
       const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
-      const ids = (admins ?? []).map((a) => a.user_id as string).filter((x) => x !== u.user!.id);
+      const ids = (admins ?? []).map((a) => a.user_id as string); // the admin who made the last pick gets it too, as a confirmation
       return json({ sent: await send(ids, { title: "Format and order are in", body: `${cup?.name ?? "Queen City Cup"}, ${r.name}: ${label[r.format] ?? r.format}, ${order}.${r.status === "setup" ? " Open lineups when you're ready." : ""}`, url: APP + "admin.html", tag: `cup-setup-${r.id}` }) });
     }
 
