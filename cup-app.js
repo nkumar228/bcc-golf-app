@@ -130,7 +130,7 @@
     if (isAdmin && liveRound) {
       const ms = matchesOf(liveRound), mine = myMatch(liveRound), pick = (adminSlot != null && ms.find(m => m.slot === adminSlot)) || null;
       const cur = pick || mine;
-      $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + adminPicker(liveRound, cur) + (cur ? scorer(liveRound, cur) : "") + roundCard(liveRound, ms);
+      $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + adminPicker(liveRound, cur) + (cur ? scorer(liveRound, pick) : "") + roundCard(liveRound, ms);
     } else
     $("cupScore").innerHTML = ryderBoard(tot, live, totalAvail) + (myRound ? scorer(myRound) : "") + (scoreRound ? roundCard(scoreRound, matchesOf(scoreRound)) : "") + (myRound ? "" : `<div class="card pad"><p class="label">Cup scoring</p><p style="margin:8px 0 0">${next ? `You don't have a match to score yet. Your match shows up here once ${esc(next.name)} is revealed.` : "The Cup is finished."}</p><p class="updated" style="margin:8px 0 0">League scoring comes back when the commissioner turns Cup mode off.</p></div>`);
     $("cupTitle").textContent = D.cup.name;
@@ -242,17 +242,22 @@
     const nm = e => e ? [e.player_id, pairsOf(r) ? e.partner_id : null].filter(Boolean).map(last).join(" & ") : "absent";
     return `<div class="card pad"><label class="crow"><span>Admin: score match</span><select id="cupAdminSlot">${cur ? "" : '<option value="">Pick a match…</option>'}${ms.map(m => `<option value="${m.slot}"${cur && cur.slot === m.slot ? " selected" : ""}>${m.slot}. ${esc(nm(m.ea))} v ${esc(nm(m.eb))}</option>`).join("")}</select></label></div>`;
   }
+  // By default you score your own side (you and your partner); a switch opens the whole group.
+  let wholeGroup = false;
   function scorer(r, picked) {
     const m = picked || myMatch(r); if (!m) return "";
+    const mySideId = !picked && [m.ea, m.eb].find(e => e && (e.player_id === D.me || e.partner_id === D.me))?.side_id;
+    const canEdit = b => !mySideId || wholeGroup || b.side === mySideId;
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
     const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 || F[r.format]?.w ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.length > 1 ? b.golfers.map(g => g.raw.toFixed(2)).join(" & ") : `${b.golfers[0].raw.toFixed(2)} counted twice`})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
-    const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "–" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
+    const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" || !canEdit(b) ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "–" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
       <div class="cstat" id="cupStat">${esc(m.st.text)}</div>
       <p class="updated" style="margin:0 0 8px">${f?.ball === "one" ? "One score per side per hole." : "Each golfer's own score."} Dots show handicap strokes, off the lowest in the match. Saves as you type.</p>
+      ${mySideId ? `<label class="row" style="gap:6px;margin:0 0 8px"><input type="checkbox" id="cupWhole"${wholeGroup ? " checked" : ""}> Score for the whole group</label>` : ""}
       <div class="gridwrap"><table class="csc" data-slot="${m.slot}" data-round="${r.id}"><thead><tr><th>Hole</th>${head}<th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }
 
@@ -483,6 +488,7 @@
       if (error) { $("cupErr" + rid).textContent = error.message; return; }
       pingTurn(rid); load();
     });
+    if ($("cupWhole")) $("cupWhole").onchange = e => { wholeGroup = e.target.checked; render(); };
     if ($("cupAdminSlot")) $("cupAdminSlot").onchange = e => { adminSlot = +e.target.value || null; render(); };
     document.querySelectorAll(".csc").forEach(tb => tb.querySelectorAll("input.cin").forEach(el => el.onchange = async () => {
       const v = parseInt(el.value, 10), rid = +tb.dataset.round, slot = +tb.dataset.slot;
