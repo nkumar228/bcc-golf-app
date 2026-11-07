@@ -350,6 +350,7 @@
   }
   // Tell whoever picks next (fire and forget)
   const pingTurn = rid => { try { sb().functions.invoke("push", { body: { action: "cup_turn", round_id: rid } }); } catch (e) {} };
+  const pingSetup = rid => { try { sb().functions.invoke("push", { body: { action: "cup_setup", round_id: rid } }); } catch (e) {} };
 
   // Rounds where it's this captain's turn (back and forth) or picks are still to go in (blind)
   function myTurns() {
@@ -382,13 +383,13 @@
     document.querySelectorAll("[data-fmt]").forEach(el => el.onchange = async () => {
       if (!el.value) return; busy = true;
       const { error } = await sb().rpc("cup_set_format", { p_round: +el.dataset.fmt, p_format: el.value }); busy = false;
-      if (error) alert(error.message); else pingTurn(+el.dataset.fmt); load();
+      if (error) alert(error.message); else { pingTurn(+el.dataset.fmt); pingSetup(+el.dataset.fmt); } load();
     });
     document.querySelectorAll("[data-ord]").forEach(el => el.onchange = async () => {
       if (!el.value) return; busy = true;
       const blind = el.value === "blind";
       const { error } = await sb().rpc("cup_set_order", { p_round: +el.dataset.ord, p_first_side: blind ? null : +el.value, p_blind: blind }); busy = false;
-      if (error) alert(error.message); else pingTurn(+el.dataset.ord); load();
+      if (error) alert(error.message); else { pingTurn(+el.dataset.ord); pingSetup(+el.dataset.ord); } load();
     });
     const rpc = async (fn, args, errId) => { busy = true; const { error } = await sb().rpc(fn, args); busy = false; if (error) { if (errId && $(errId)) $(errId).textContent = error.message; else alert(error.message); return false; } await load(); return true; };
     if ($("capAddBtn")) $("capAddBtn").onclick = () => { const v = +$("capAdd").value; if (v) rpc("cup_set_member", { p_cup: D.cup.id, p_player: v, p_join: true }); };

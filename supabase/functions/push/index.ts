@@ -52,6 +52,20 @@ Deno.serve(async (req) => {
 
     if (body.action === "test") return json({ sent: await send([u.user.id], { title: "BCC Golf", body: "Alerts are on. You'll get one when it's your turn to pick.", url: APP + "#captain", tag: "test" }) });
 
+    // Captains have picked the format and the order: tell the admins
+    if (body.action === "cup_setup") {
+      const rid = Number(body.round_id);
+      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format,first_side_id").eq("id", rid).maybeSingle();
+      if (!r || !r.format || (!r.blind && !r.first_side_id) || !["setup", "lineups"].includes(r.status)) return json({ sent: 0 });
+      const { data: cup } = await admin.from("cups").select("name").eq("id", r.cup_id).maybeSingle();
+      const { data: first } = r.first_side_id ? await admin.from("cup_sides").select("name").eq("id", r.first_side_id).maybeSingle() : { data: null };
+      const label: Record<string, string> = { four_ball: "Four Ball", four_ball_agg: "Four Ball Aggregate", alternate_shot: "Alternate Shot", greensome: "Greensome", chapman: "Chapman", scramble: "Scramble", singles: "Singles" };
+      const order = r.blind ? "blind picks" : `${first?.name ?? "?"} goes first`;
+      const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
+      const ids = (admins ?? []).map((a) => a.user_id as string).filter((x) => x !== u.user!.id);
+      return json({ sent: await send(ids, { title: "Format and order are in", body: `${cup?.name ?? "Queen City Cup"}, ${r.name}: ${label[r.format] ?? r.format}, ${order}.${r.status === "setup" ? " Open lineups when you're ready." : ""}`, url: APP + "admin.html", tag: `cup-setup-${r.id}` }) });
+    }
+
     if (body.action === "cup_turn") {
       const rid = Number(body.round_id);
       const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format").eq("id", rid).maybeSingle();
