@@ -246,7 +246,7 @@
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
-    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.map(g => g.raw.toFixed(2)).join(" & ")})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
+    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 || F[r.format]?.w ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.length > 1 ? b.golfers.map(g => g.raw.toFixed(2)).join(" & ") : `${b.golfers[0].raw.toFixed(2)} counted twice`})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
     const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "–" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
     const f = F[r.format];
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
@@ -281,7 +281,7 @@
     if (chs.some(x => x == null)) return "set the course to see handicaps";
     const raws = ids.map(id => chRaw(r, id)), d = x => x.toFixed(2);
     if (!f.pairs) return `hcp ${d(raws[0])} → ${chs[0]}`;
-    if (ids.length < 2) return `${last(ids[0])} alone · hcp ${d(raws[0])} → ${chs[0]}`;
+    if (ids.length < 2) { if (f.w) { const t = C.teamHcpRaw(raws, f.w); return `${last(ids[0])} alone · team hcp ${d(t)} → ${Math.round(t + 1e-9)} (${d(raws[0])} counted twice)`; } return `${last(ids[0])} alone · hcp ${d(raws[0])} → ${chs[0]}${f.agg ? " · net counts twice" : ""}`; }
     if (f.w) { const t = C.teamHcpRaw(raws, f.w); return `team hcp ${d(t)} → ${Math.round(t + 1e-9)} (${raws.map(d).join(" & ")})`; }
     return `hcps ${raws.map(d).join(" & ")} → ${chs.join(" & ")}`;
   }
@@ -419,7 +419,7 @@
     const pairs = pairsOf(r), submitted = D.subs.some(s => s.round_id === r.id && s.side_id === mine), n = matchCount(r);
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === mine);
     if (submitted) return `<p class="updated"><b>Your picks are in.</b> They stay hidden until the commissioner reveals the round.</p><ol class="clist">${es.sort((a, b) => a.slot - b.slot).map(e => `<li>${names(r, e)}</li>`).join("")}</ol>`;
-    return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line. If your side is one player short, leave one partner blank and that golfer plays alone off their own handicap" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
+    return `<p class="updated">Blind: put in all your picks, in order${pairs ? ", one team per line. If your side is one player short, leave one partner blank and that golfer plays alone, with their handicap counted twice" : ""}. Matches go by position (1 v 1, 2 v 2). Nobody sees them until the reveal.</p>
       <div class="cedit" data-round="${r.id}">${Array.from({ length: n }, (_, i) => { const e = es.find(x => x.slot === i + 1); return `<div class="crow2" data-slot="${i + 1}"><b>${pairs ? "Team " : ""}${i + 1}</b><select data-e="player_id">${pickOptions(r, e?.player_id, mine)}</select>${pairs ? `<select data-e="partner_id">${pickOptions(r, e?.partner_id, mine)}</select>` : ""}<span class="chcp">${esc(teamHcpText(r, e?.player_id, e?.partner_id))}</span></div>`; }).join("")}
       <button class="btn small" type="button" data-submit="${r.id}" style="margin-top:10px">Submit picks</button><p class="si-err" id="cupErr${r.id}"></p></div>`;
   }
@@ -443,7 +443,7 @@
     document.querySelectorAll("[data-place]").forEach(b => b.onclick = () => {
       const rid = +b.dataset.place, box = b.closest(".cpick"), pl = +box.querySelector('[data-pp="player"]').value || null, pt = box.querySelector('[data-pp="partner"]') ? (+box.querySelector('[data-pp="partner"]').value || null) : null;
       const r = D.rounds.find(x => x.id === rid), solo = box.querySelector('[data-pp="partner"]')?.value === "solo";
-      if (solo && !confirm("Send this golfer out alone? Only use this when your side is one player short. They play off their own handicap.")) return;
+      if (solo && !confirm("Send this golfer out alone? Only use this when your side is one player short. They play the same format, with their handicap counted twice.")) return;
       if (!pl || (pairsOf(r) && !pt && !solo)) { $("cupErr" + rid).textContent = pairsOf(r) ? "Pick both players." : "Pick a player."; return; }
       if (pl === pt) { $("cupErr" + rid).textContent = "Pick two different players."; return; }
       rpc("cup_place", { p_round: rid, p_side: D.captainOf, p_player: pl, p_partner: pt }, "cupErr" + rid).then(ok => ok && pingTurn(rid));
