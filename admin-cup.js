@@ -281,7 +281,13 @@
         if (st === "lineups" && r.status === "setup" && !r.course_id) { alert("Pick a course for this round before opening lineups. Handicaps and scoring need it."); return; }
         if (st === "lineups" && r.status === "setup" && (!r.format || (!r.first_side_id && !r.blind)) && !confirm("The format or who goes first isn't picked yet. Captains can still pick them in the app. Open lineups anyway?")) return;
         if (st === "lineups" && r.status === "revealed" && !confirm("Hide the matchups again? Scores already entered stay.")) return;
-        const { error } = await sb.from("cup_rounds").update({ status: st }).eq("id", r.id); if (check(error, STATUS[st])) { if (st === "lineups") pingTurn(r.id); loadCup(); }
+        const { error } = await sb.from("cup_rounds").update({ status: st }).eq("id", r.id);
+        if (check(error, STATUS[st])) {
+          if (st === "lineups") pingTurn(r.id);
+          // Round finished: the captains of the next round get their format / order call
+          if (st === "final") { const nx = D.rounds.filter(x => x.number > r.number && x.status !== "final").sort((a, b) => a.number - b.number)[0]; if (nx) pingTurn(nx.id); }
+          loadCup();
+        }
       });
       const rv = box.querySelector("[data-reveal]");
       if (rv) rv.onclick = async () => {

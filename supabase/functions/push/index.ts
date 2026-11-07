@@ -68,10 +68,20 @@ Deno.serve(async (req) => {
 
     if (body.action === "cup_turn") {
       const rid = Number(body.round_id);
-      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format,first_side_id").eq("id", rid).maybeSingle();
-      // Nothing to say until the format and the order are both picked
-      if (!r || r.status !== "lineups" || !r.format || (!r.blind && !r.first_side_id)) return json({ sent: 0 });
+      const { data: r } = await admin.from("cup_rounds").select("id,cup_id,name,status,blind,format,first_side_id,format_side_id,order_side_id").eq("id", rid).maybeSingle();
+      if (!r || !["setup", "lineups"].includes(r.status)) return json({ sent: 0 });
       const { data: cup } = await admin.from("cups").select("name").eq("id", r.cup_id).maybeSingle();
+      const capsOf = async (sideIds: number[]) => {
+        const { data: caps } = await admin.from("cup_players").select("players(user_id)").eq("cup_id", r.cup_id).eq("is_captain", true).in("side_id", sideIds);
+        return (caps ?? []).map((c) => (c.players as unknown as { user_id: string | null })?.user_id).filter((x): x is string => !!x && x !== u.user!.id);
+      };
+      // Format or order still to pick: tell the captain who picks it
+      if (!r.format || (!r.blind && !r.first_side_id)) {
+        const side = !r.format ? r.format_side_id : r.order_side_id, what = !r.format ? "pick the format" : "pick the order (who goes first, or blind)";
+        if (!side) return json({ sent: 0 });
+        return json({ sent: await send(await capsOf([side]), { title: "Your call, captain", body: `${cup?.name ?? "Queen City Cup"}, ${r.name}: ${what}.`, url: APP + "#captain", tag: `cup-pick-${rid}` }) });
+      }
+      if (r.status !== "lineups") return json({ sent: 0 });
       let sides: number[] = [], what = "";
       if (r.blind) {
         const { data: all } = await admin.from("cup_sides").select("id").eq("cup_id", r.cup_id);
