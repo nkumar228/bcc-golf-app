@@ -506,6 +506,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <a href="#rounds" class="cup-only">League rounds</a>
     <a href="#cup-history">QCC Cup history</a>
     <a href="admin.html" class="admin-only">Admin site</a>
+    <a href="#ringers">Ringer boards</a>
     <a href="#rules">League rules</a>
     <a href="#skins-games">Skins winners</a>
     <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
@@ -689,16 +690,6 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
       <div class="match-list" id="wkUpList"></div>
     </section>
 
-    <section id="ringer" style="display:grid;gap:8px" hidden aria-labelledby="rgl">
-      <div class="head"><p class="label" id="rgl">Ringer</p>
-        <div class="seg" role="group" aria-label="Nine">
-          <button type="button" data-n="front" aria-pressed="true">Front 9</button>
-          <button type="button" data-n="back" aria-pressed="false">Back 9</button>
-        </div>
-      </div>
-      <div class="card"><table class="stand stats ring" id="ringTable"></table></div>
-      <span class="updated" id="ringNote"></span>
-    </section>
 
     <p class="note demo-only">Weekly results from your GolfSoftware reports (pulled Nov 6). 2026 points used the old match rules; Fwy, GIR and putts are what golfers entered that week.</p>
   </section>
@@ -724,6 +715,27 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   <section class="view" id="v-cup-history" aria-label="Queen City Cup history" hidden>
     <div class="head"><p class="label">Queen City Cup history</p></div>
     <div id="histBody" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="view" id="v-ringers" aria-label="Ringer boards" hidden>
+    <div class="card pad">
+      <p class="label">Ringer boards</p>
+      <div class="seg" role="group" aria-label="Board" style="margin-top:8px">
+        <button type="button" data-rk="gross" aria-pressed="true">Ringer (gross)</button>
+        <button type="button" data-rk="net" aria-pressed="false">Net Ringer</button>
+      </div>
+      <div class="updated" id="ringInfo" style="margin-top:8px"></div>
+    </div>
+    <section id="ringer" style="display:grid;gap:8px" aria-labelledby="rgl">
+      <div class="head"><p class="label" id="rgl">Best score on each hole</p>
+        <div class="seg" role="group" aria-label="Nine">
+          <button type="button" data-n="front" aria-pressed="true">Front 9</button>
+          <button type="button" data-n="back" aria-pressed="false">Back 9</button>
+        </div>
+      </div>
+      <div class="card"><table class="stand stats ring" id="ringTable"></table></div>
+      <span class="updated" id="ringNote"></span>
+    </section>
   </section>
 
   <section class="view" id="v-rules" aria-label="League rules" hidden>
@@ -1462,7 +1474,7 @@ the spirit, intent, and fairness of league competition.</p>
   loadMember();
 
   // Router: #home, #score, #gps
-  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), ringers: $("v-ringers"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
   const menu = $("menu"), mb = $("menuBtn");
   const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
   mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };
@@ -1595,14 +1607,18 @@ the spirit, intent, and fairness of league competition.</p>
       const later = list.filter(e => e.id !== ev.id && e.status !== "final" && e.status !== "rained_out" && e.play_date >= ev.play_date).sort((a, b) => a.play_date.localeCompare(b.play_date));
       if (!rCache.courses) { const { data: cs } = await sb.from("courses").select("id,name"); rCache.courses = new Map((cs || []).map(c => [c.id, c.name])); }
       $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="up">Week ${ev.number} · ${fmtDate(ev.play_date)} · this week</option>` + later.map(e => `<option value="up-${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}</option>`).join("") + `</optgroup>` +
-        (rCache.finals.length ? `<optgroup label="Season boards"><option value="ringer-gross">Ringer (gross)</option><option value="ringer-net">Net Ringer</option></optgroup>` : "") +
         (done.length ? `<optgroup label="Played">` + done.map(e => `<option value="${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}${e.status === "rained_out" ? " · rained out" : ""}</option>`).join("") + `</optgroup>` : "");
       $("wkPick").value = done.length ? String(done[0].id) : "up";
       $("wkPick").onchange = renderRound;
-      document.querySelectorAll("button[data-n]").forEach(b => b.onclick = () => { ringNine = b.dataset.n; document.querySelectorAll("button[data-n]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
+      document.querySelectorAll("button[data-rk]").forEach(b => b.onclick = () => { ringKind = b.dataset.rk; document.querySelectorAll("button[data-rk]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
+  renderRinger();
+  document.querySelectorAll("button[data-n]").forEach(b => b.onclick = () => { ringNine = b.dataset.n; document.querySelectorAll("button[data-n]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
+      document.querySelectorAll("button[data-rk]").forEach(b => b.onclick = () => { ringKind = b.dataset.rk; document.querySelectorAll("button[data-rk]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderRinger(); });
       renderRound();
+      if (location.hash === "#ringers") renderRinger();
     }
-    const showR = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; $("ringer").hidden = k !== "ring"; };
+    window.addEventListener("hashchange", () => { if (location.hash === "#ringers" && rCache.finals) renderRinger(); });
+    const showR = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; };
     const f1 = v => Number.isInteger(+v) ? String(+v) : (+v).toFixed(1);
     async function renderRound() {
       const v = $("wkPick").value, { ev, matchups, teams } = ctx, teamById = new Map(teams.map(t => [t.id, t]));
@@ -1645,6 +1661,7 @@ the spirit, intent, and fairness of league competition.</p>
       }).join("");
     }
     async function renderRinger() {
+      $("ringInfo").textContent = rCache.finals.length ? `Each player's best ${ringKind} score on every hole, ${rCache.finals.length} week${rCache.finals.length === 1 ? "" : "s"} so far` : "The boards start after week 1 is final.";
       if (!rCache.ring) {
         const ids = rCache.finals.map(e => e.id);
         const [{ data: sc }, { data: res }, { data: tees }] = await Promise.all([
@@ -1900,14 +1917,13 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   const fd = d => { const [m, dd] = d.split("/"); return MON.at(+m - 1) + " " + +dd; };
   const order = WEEKS.slice().sort((a, b) => { const t = w => Date.parse(w.d); return t(b) - t(a) || b.e - a.e; });
   $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="22">Event 22 · Aug 25 · Front</option></optgroup>` +
-    `<optgroup label="Season boards"><option value="ringer-gross">Ringer (gross)</option><option value="ringer-net">Net Ringer</option></optgroup>` +
     `<optgroup label="Played">` + order.map(w => `<option value="${w.e}">Event ${w.e} · ${fd(w.d)} · ${w.c || "—"}${w.rain ? " · rained out" : ""}</option>`).join("") + `</optgroup>`;
   $("wkPick").value = "21";
   const WCOLS = [["Pts",3,-1],["Gross",1,1],["Net",2,1],["Fwy",4,-1],["GIR",5,-1],["Putts",6,1]];
   let wSort = 3, wDir = 1;
   function renderWeek() {
     const v = $("wkPick").value;
-    const show = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; $("ringer").hidden = k !== "ring"; };
+    const show = k => { $("wkBody").hidden = k !== "played"; $("wkRain").hidden = k !== "rain"; $("wkUpcoming").hidden = k !== "up"; };
     if (v.startsWith("ringer")) { show("ring"); ringKind = v === "ringer-net" ? "net" : "gross"; $("wkInfo").textContent = ringKind === "net" ? "Each player's best net score on every hole, events 1 to 21" : "Each player's best gross score on every hole, events 1 to 21"; renderRinger(); return; }
     if (v === "22") { show("up"); $("wkInfo").textContent = "Tue Aug 25, 2026 · Avon Fields Front · first tee 5:00 PM"; $("wkUpList").innerHTML = upcomingCards(22); return; }
     const w = WEEKS.find(x => x.e === +v);
@@ -2169,8 +2185,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=48"></script>
-<script src="cup-app.js?v=48"></script>
+<script src="cup.js?v=49"></script>
+<script src="cup-app.js?v=49"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
