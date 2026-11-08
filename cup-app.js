@@ -71,7 +71,7 @@
       <div class="card pad"><p class="label">Year by year</p><div class="cmatches">${rows.map(r => { const w = win(r); return `<div class="cm"><span class="${w === r.a ? "lead" : ""}" style="--c:${color(r.a)}">${esc(r.a)} ${pts(r.ap)}</span><em><b>${r.year}</b>${r.notes ? "<br>" + esc(r.notes) : ""}</em><span class="r ${w === r.b ? "lead" : ""}" style="--c:${color(r.b)}">${pts(r.bp)} ${esc(r.b)}</span></div>`; }).join("")}</div></div>`;
   }
   function off() {
-    D = null; document.body.classList.remove("cup-on");
+    D = null; document.body.classList.remove("cup-on"); document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#000000");
     const t = document.querySelector('.tabs a[data-tab="rounds"], .tabs a[data-tab="cup"]');
     if (t) { t.href = "#rounds"; t.dataset.tab = "rounds"; t.lastChild.textContent = "Rounds"; }
     if ($("cupHome")) $("cupHome").hidden = true;
@@ -80,7 +80,7 @@
     if (location.hash === "#cup") location.hash = "#home";
   }
   function on() {
-    document.body.classList.add("cup-on");
+    document.body.classList.add("cup-on"); document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#173f80");
     const t = document.querySelector('.tabs a[data-tab="rounds"], .tabs a[data-tab="cup"]');
     if (t) { t.href = "#cup"; t.dataset.tab = "cup"; t.lastChild.textContent = "Cup"; if (location.hash === "#cup") t.setAttribute("aria-current", "page"); }
     $("cupHome").hidden = false; $("cupScore").hidden = false;

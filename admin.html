@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BCC Golf Admin</title>
-<meta name="theme-color" content="#1d6a43">
+<meta name="theme-color" content="#000000">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,19 +12,19 @@
 <style>
 :root {
   --bg: #f2f4ef; --surface: #ffffff; --ink: #17221b; --muted: #5d6a61; --line: #d9dfd6;
-  --green: #1d6a43; --green-soft: #e3efe7; --flag: #e8b923; --bad: #b3261e;
+  --green: #e00122; --green-soft: #fde8eb; --flag: #e8b923; --bad: #b3261e;
   --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #5cc28a; --green-soft: #1f3327; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
+  :root:not([data-theme="light"]) { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #ff4d63; --green-soft: #3a1a1f; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
 }
-:root[data-theme="dark"] { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #5cc28a; --green-soft: #1f3327; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
+:root[data-theme="dark"] { --bg: #0f1511; --surface: #18201b; --ink: #e8eee9; --muted: #9aa89e; --line: #2c3730; --green: #ff4d63; --green-soft: #3a1a1f; --flag: #f2c94c; --bad: #ff8a80; color-scheme: dark; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 var(--body); }
-header { background: var(--green); color: #fff; padding: 12px 16px; }
+header { background: #000; color: #fff; padding: 12px 16px; border-bottom: 3px solid #e00122; }
 header .in { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 header h1 { margin: 0; font: 700 24px/1 var(--display); letter-spacing: .02em; }
 header .who { font-size: 13px; opacity: .9; display: flex; gap: 12px; align-items: center; }
@@ -346,10 +346,24 @@ tr.inc td { color: var(--bad); }
   const pname = p => `${p.last_name}, ${p.first_name}`;
 
   // ---------- players ----------
+  // Tap a column heading to sort by it; tap again to flip the order.
+  let pSort = { k: "name", dir: 1 };
+  const P_COLS = [
+    ["name", "Name", p => pname(p).toLowerCase()],
+    ["email", "Email", p => (p.email || "~").toLowerCase()],
+    ["team", "Team", p => teamOf(p.id)?.number ?? 999],
+    ["hcp", "Hcp", p => hcps.has(p.id) ? +hcps.get(p.id).pre_handicap : 999],
+    ["tee", "Tee", p => p.default_tee || ""],
+    ["admin", "Admin", p => p.is_admin ? 0 : 1],
+    ["active", "Active", p => p.active ? 0 : 1],
+    ["signed", "Signed in", p => p.user_id ? 0 : p.email ? 1 : 2]
+  ];
   function renderPlayers() {
     const f = $("pFilter").value.trim().toLowerCase(), showOff = $("pShowInactive").checked;
-    const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f)));
-    $("playersTable").innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Team</th><th title="Pre-handicap from the player's recent rounds, all seasons">Hcp</th><th>Tee</th><th>Admin</th><th>Active</th><th>Signed in</th></tr></thead><tbody>` +
+    const key = (P_COLS.find(c => c[0] === pSort.k) || P_COLS[0])[2];
+    const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f)))
+      .sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : pname(a).localeCompare(pname(b))) * (x === y ? 1 : pSort.dir); });
+    $("playersTable").innerHTML = `<thead><tr>${P_COLS.map(([k, label]) => `<th data-sort="${k}" style="cursor:pointer;user-select:none;white-space:nowrap"${k === "hcp" ? ` title="Pre-handicap from the player's recent rounds, all seasons"` : ""}>${label}${pSort.k === k ? (pSort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
       list.map(p => { const t = teamOf(p.id); return `<tr data-id="${p.id}">
         <td><b>${esc(pname(p))}</b></td>
         <td><input class="w-email" type="email" data-f="email" value="${esc(p.email)}" placeholder="add email"></td>
@@ -359,6 +373,7 @@ tr.inc td { color: var(--bad); }
         <td><input type="checkbox" data-f="is_admin"${p.is_admin ? " checked" : ""} aria-label="Admin"></td>
         <td><input type="checkbox" data-f="active"${p.active ? " checked" : ""} aria-label="Active"></td>
         <td>${p.user_id ? '<span class="pill">Yes</span>' : (p.email ? '<span class="pill warn">Not yet</span>' : "")}</td></tr>`; }).join("") + `</tbody>`;
+    $("playersTable").querySelectorAll("[data-sort]").forEach(th => th.onclick = () => { pSort = { k: th.dataset.sort, dir: pSort.k === th.dataset.sort ? -pSort.dir : 1 }; renderPlayers(); });
     $("playersTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
       const id = +el.closest("tr").dataset.id, f = el.dataset.f;
       let v = el.type === "checkbox" ? el.checked : el.value.trim();
@@ -944,7 +959,7 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=46"></script>
-<script src="admin-cup.js?v=46"></script>
+<script src="cup.js?v=47"></script>
+<script src="admin-cup.js?v=47"></script>
 </body>
 </html>
