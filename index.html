@@ -664,9 +664,9 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   2027 rules shown here: no player-vs-player matches or singles bonus; ghosts are locked at 36 net and count for the team only, so they don't take a place or earn points; weekly points come from net finish among real golfers. Points come from the points table in your GolfSoftware league setup (1st earns <span id="topPts"></span>, 20th earns 1)<span id="fieldN" hidden></span>, and tied golfers split the points of the places they share. Change the table or the number of teams in GolfSoftware and the app follows. Putts, fairways and greens for other golfers are sample numbers shaped by each player's 2026 season averages, because GolfSoftware only shares per-hole stats with signed-in players; in the real app they are what each golfer enters. Thoney and Wegrzyn had no scores posted for this event.</p>
   </section>
 
-  <section class="view" id="v-rounds" aria-label="Previous rounds" hidden>
+  <section class="view" id="v-rounds" aria-label="Rounds" hidden>
     <div class="card pad pick">
-      <label class="label" for="wkPick">Previous rounds</label>
+      <label class="label" for="wkPick">Rounds</label>
       <select id="wkPick"></select>
       <div class="updated" id="wkInfo"></div>
     </div>
@@ -1592,7 +1592,9 @@ the spirit, intent, and fairness of league competition.</p>
       const list = evs || [], done = list.filter(e => e.status === "final" || e.status === "rained_out").sort((a, b) => b.play_date.localeCompare(a.play_date));
       const nine = cid => cid === ev.course_id ? (ctx.course?.name || "").replace("Avon Fields - ", "") : "";
       rCache = { list, finals: list.filter(e => e.status === "final") };
-      $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="up">Week ${ev.number} · ${fmtDate(ev.play_date)}</option></optgroup>` +
+      const later = list.filter(e => e.id !== ev.id && e.status !== "final" && e.status !== "rained_out" && e.play_date >= ev.play_date).sort((a, b) => a.play_date.localeCompare(b.play_date));
+      if (!rCache.courses) { const { data: cs } = await sb.from("courses").select("id,name"); rCache.courses = new Map((cs || []).map(c => [c.id, c.name])); }
+      $("wkPick").innerHTML = `<optgroup label="Upcoming"><option value="up">Week ${ev.number} · ${fmtDate(ev.play_date)} · this week</option>` + later.map(e => `<option value="up-${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}</option>`).join("") + `</optgroup>` +
         (rCache.finals.length ? `<optgroup label="Season boards"><option value="ringer-gross">Ringer (gross)</option><option value="ringer-net">Net Ringer</option></optgroup>` : "") +
         (done.length ? `<optgroup label="Played">` + done.map(e => `<option value="${e.id}">Week ${e.number} · ${fmtDate(e.play_date)}${e.status === "rained_out" ? " · rained out" : ""}</option>`).join("") + `</optgroup>` : "");
       $("wkPick").value = done.length ? String(done[0].id) : "up";
@@ -1609,6 +1611,16 @@ the spirit, intent, and fairness of league competition.</p>
         showR("up"); $("wkInfo").textContent = `${fmtDate(ev.play_date)} · ${ctx.course?.name || ""}${matchups[0] ? " · first tee " + fmtTime(matchups[0].tee_time) : ""}`;
         $("wkUpList").innerHTML = matchups.map(m => { const side = tid => { const t = teamById.get(tid); return `<div class="tm${tid === m.team_b ? " r" : ""}"><b>${esc(t?.name || "")}</b><div class="pl">${rosterOf(t).map(r => `<span>${r.ghost ? "Ghost" : esc(r.p?.last_name || "")}</span>`).join("")}</div></div>`; };
           return `<div class="card trow2"><div class="tt num">${fmtTime(m.tee_time).replace(" PM", "")}<small>PM</small></div>${side(m.team_a)}${side(m.team_b)}</div>`; }).join("") || '<p class="updated">No tee times yet.</p>';
+        return;
+      }
+      if (v.startsWith("up-")) {
+        const e = rCache.list.find(x => x.id === +v.slice(3)); if (!e) return;
+        showR("up"); $("wkUpList").innerHTML = '<p class="updated">Loading…</p>';
+        const { data: ms } = await sb.from("matchups").select("tee_time,team_a,team_b").eq("event_id", e.id).order("tee_time");
+        if ($("wkPick").value !== v) return;
+        $("wkInfo").textContent = `${fmtDate(e.play_date)} · ${rCache.courses.get(e.course_id) || ""}${ms?.[0] ? " · first tee " + fmtTime(ms[0].tee_time) : ""}${e.note ? " · " + e.note : ""}`;
+        const side = (tid, r) => { const t = teamById.get(tid); return `<div class="tm${r ? " r" : ""}"><b>${esc(t?.name || "")}</b><div class="pl">${(t?.team_players || []).map(tp => `<span>${esc(tp.players?.last_name || "")}</span>`).join("")}</div></div>`; };
+        $("wkUpList").innerHTML = (ms || []).map(m => `<div class="card trow2"><div class="tt num">${fmtTime(m.tee_time).replace(" PM", "")}<small>PM</small></div>${side(m.team_a)}${side(m.team_b, 1)}</div>`).join("") || '<p class="updated">No tee times set for this week yet.</p>';
         return;
       }
       const e = rCache.list.find(x => x.id === +v); if (!e) return;
@@ -2157,8 +2169,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=47"></script>
-<script src="cup-app.js?v=47"></script>
+<script src="cup.js?v=48"></script>
+<script src="cup-app.js?v=48"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
