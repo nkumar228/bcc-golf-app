@@ -16,7 +16,7 @@
     cup = cups.find(c => c.id === (pick ?? cup?.id)) || cups[0] || null;
     $("cupPick").innerHTML = cups.map(c => `<option value="${c.id}"${c === cup ? " selected" : ""}>${esc(c.name)}${c.active ? " (in the app)" : ""}</option>`).join("") || "<option>No Cups yet</option>";
     $("cupPick").disabled = !cups.length;
-    if (!cup) { D = null; $("cupBody").innerHTML = '<p class="note">No Cup yet. Start one with the button above; it copies the sides from the last Cup.</p>'; return; }
+    if (!cup) { D = null; if (A.onCupLoaded) A.onCupLoaded(null, null); $("cupBody").innerHTML = '<p class="note">No Cup yet. Start one with the button above; it copies the sides from the last Cup.</p>'; return; }
     await loadCup();
   }
   async function loadCup() {
@@ -32,6 +32,7 @@
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
     D = { sides: sides || [], cp: cp || [], rounds: rounds || [], entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], avail: avail || [], tbc };
     render();
+    if (A.onCupLoaded) A.onCupLoaded(cup, D);
   }
   $("cupPick").onchange = () => loadCups(+$("cupPick").value);
 
