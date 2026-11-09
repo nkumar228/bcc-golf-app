@@ -106,6 +106,7 @@ tr.inc td { color: var(--bad); }
       <button type="button" data-tab="season">Season rules</button>
       <button type="button" data-tab="seasons">Seasons</button>
       <button type="button" data-tab="cup">Queen City Cup</button>
+      <button type="button" data-tab="champions">Champions</button>
       <label class="row" style="gap:6px;margin-left:auto;font-weight:600">Season <select id="seasonPick"></select></label>
     </nav>
 
@@ -251,6 +252,13 @@ tr.inc td { color: var(--bad); }
       <p class="note">Past results shown on the app's Cup history page. Cups run in the app show up there by themselves once every round is final; add earlier years here. Leave Winner blank to go by points.</p>
       <div class="scroll"><table id="histTable"></table></div>
       <div class="row" style="margin-top:10px"><button class="btn secondary" type="button" id="histAdd">Add a year</button></div>
+    </section>
+
+    <section class="card" data-panel="champions" hidden>
+      <h2>Hall of Champions</h2>
+      <p class="note">Shown on the app's Hall of Champions page (in the ☰ menu), newest year first. Changes save as you type. Photos are shrunk before upload.</p>
+      <div class="scroll"><table id="champTable"></table></div>
+      <div class="row" style="margin-top:10px"><button class="btn secondary" type="button" id="champAdd">Add next year</button></div>
     </section>
 
     <section class="card" data-panel="season" hidden>
@@ -975,7 +983,8 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=55"></script>
-<script src="admin-cup.js?v=55"></script>
+<script src="cup.js?v=56"></script>
+<script src="admin-cup.js?v=56"></script>
+<script src="admin-champions.js?v=56"></script>
 </body>
 </html>

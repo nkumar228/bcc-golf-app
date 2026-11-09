@@ -248,6 +248,15 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .lock { width: 13px; height: 13px; vertical-align: -1px; }
 .thru .lock { color: var(--muted); }
 .ghostrow { background: var(--bg); }
+.champ { padding: 14px 16px; display: grid; gap: 12px; }
+.champ .yr { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--green); }
+.champ .who { display: grid; gap: 6px; }
+.champ .who .label { margin: 0; }
+.champ .who b { font-size: 17px; }
+.champ .who span { color: var(--muted); font-size: 14px; }
+.champ img { width: 100%; max-height: 340px; object-fit: contain; border-radius: 10px; background: var(--bg); display: block; }
+.champ .two { display: grid; gap: 12px; }
+@media (min-width: 440px) { .champ .two { grid-template-columns: 1fr 1fr; align-items: start; } }
 .pname small.subnote { display: block; color: var(--green); font-weight: 600; }
 .locked { display: inline-flex; align-items: baseline; gap: 6px; padding: 8px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
 .locked .num { font-size: 28px; font-weight: 700; color: var(--ink); }
@@ -509,6 +518,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <a href="#ringers">Ringer boards</a>
     <a href="#skins-games">Skins winners</a>
     <a href="#handicap">How my handicap is calculated</a>
+    <a href="#champions">Hall of Champions</a>
     <a href="#cup-history">QCC Cup history</a>
     <hr class="menusep">
     <a href="#rules">League rules</a>
@@ -716,6 +726,11 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   <section class="view" id="v-cup-format" aria-label="How the Cup format works" hidden>
     <div class="head"><p class="label">How it's played</p></div>
     <div id="fmtBody" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="view" id="v-champions" aria-label="Hall of Champions" hidden>
+    <div class="head"><p class="label">Hall of Champions</p><span class="updated" id="champCount"></span></div>
+    <div id="champBody" style="display:grid;gap:12px"><p class="updated">Loading…</p></div>
   </section>
 
   <section class="view" id="v-cup-history" aria-label="Queen City Cup history" hidden>
@@ -1494,7 +1509,7 @@ the spirit, intent, and fairness of league competition.</p>
   loadMember();
 
   // Router: #home, #score, #gps
-  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), ringers: $("v-ringers"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), champions: $("v-champions"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), ringers: $("v-ringers"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
   const menu = $("menu"), mb = $("menuBtn");
   const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
   mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };
@@ -1729,6 +1744,24 @@ the spirit, intent, and fairness of league competition.</p>
         (rows.length ? rows.map(o => `<tr${o.id === session.playerId ? ' class="mine"' : ""}><td class="l"><b>${esc(o.name)}</b></td>${holes.map(h => `<td>${mk(o.h[h], h)}</td>`).join("")}<td class="tot">${o.tot}</td></tr>`).join("") : `<tr><td class="l" colspan="11">No one has played the ${ringNine} nine in a final week yet.</td></tr>`) + "</tbody>";
       $("ringNote").textContent = ringKind === "net" ? "Net score per hole after handicap strokes." : "○ birdie · □ bogey.";
     }
+
+    // Hall of Champions: one card per season, newest first
+    let champsLoaded = false;
+    async function loadChampions() {
+      if (champsLoaded || !sb || !session?.real) return;
+      const { data, error } = await sb.from("champions").select("*").order("year", { ascending: false });
+      if (error) { $("champBody").innerHTML = '<p class="updated">Couldn\'t load the champions. Pull down to try again.</p>'; return; }
+      champsLoaded = true;
+      const pic = (src, alt) => src ? `<a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(alt)}" loading="lazy"></a>` : "";
+      $("champCount").textContent = data.length ? `${data.at(-1).year}–${data[0].year}` : "";
+      $("champBody").innerHTML = (data || []).map(c => `<div class="card champ"><div class="yr">${c.year}</div><div class="two">
+        ${c.league_champion ? `<div class="who"><p class="label">League champion</p><b>${esc(c.league_champion)}</b>${pic(c.league_photo, c.league_champion)}</div>` : ""}
+        ${c.team_name || c.team_players ? `<div class="who"><p class="label">Team champions</p><b>${esc(c.team_name || "")}</b>${c.team_players ? `<span>${esc(c.team_players)}</span>` : ""}${pic(c.team_photo, c.team_name || c.team_players)}</div>` : ""}
+        </div>${c.notes ? `<p class="updated" style="margin:0">${esc(c.notes)}</p>` : ""}</div>`).join("") || '<p class="updated">No champions entered yet.</p>';
+    }
+    window.addEventListener("hashchange", () => { if (location.hash === "#champions") loadChampions(); });
+    window.addEventListener("bcc-session", () => { champsLoaded = false; if (location.hash === "#champions") loadChampions(); });
+    if (location.hash === "#champions") setTimeout(loadChampions, 0);
 
     // Home: this week's card and season standings from finalized weeks
     async function renderHome() {
@@ -2222,8 +2255,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=55"></script>
-<script src="cup-app.js?v=55"></script>
+<script src="cup.js?v=56"></script>
+<script src="cup-app.js?v=56"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
