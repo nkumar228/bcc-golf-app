@@ -758,7 +758,7 @@ tr.inc td { color: var(--bad); }
     const playing = new Set(wk.matchups.flatMap(m => [m.team_a, m.team_b]).flatMap(t => slotsOf(t).map(x => x.player_id)).filter(Boolean));
     const opts = (sel, tid) => `<option value="ghost"${!sel ? " selected" : ""}>Ghost (${season.ghost_net} net)</option>` +
       `<optgroup label="Team">${members.filter(m => m.team_id === tid).map(m => `<option value="${m.player_id}"${m.player_id === sel ? " selected" : ""}>${pLabel(m.player_id)}</option>`).join("")}</optgroup>` +
-      `<optgroup label="Subs and others">${players.filter(p => p.active && !members.some(m => m.team_id === tid && m.player_id === p.id)).map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}${!teamOf(p.id) ? " (sub)" : ""}${playing.has(p.id) && p.id !== sel ? " · playing" : ""}</option>`).join("")}</optgroup>`;
+      `<optgroup label="Subs">${players.filter(p => (p.active && !teamOf(p.id)) || (p.id === sel && !members.some(m => m.team_id === tid && m.player_id === p.id))).sort((a, b) => pname(a).localeCompare(pname(b))).map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}${playing.has(p.id) && p.id !== sel ? " · playing" : ""}</option>`).join("")}</optgroup>`;
     const teeSel = (v) => `<select data-tee>${["Blue", "White", "Gold"].map(x => `<option${x === v ? " selected" : ""}>${x}</option>`).join("")}</select>`;
     $("wkLineups").innerHTML = `<div class="lu">` + wk.matchups.map(m => [m.team_a, m.team_b].map(tid => {
       const sl = slotsOf(tid); while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
@@ -959,7 +959,7 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=49"></script>
-<script src="admin-cup.js?v=49"></script>
+<script src="cup.js?v=50"></script>
+<script src="admin-cup.js?v=50"></script>
 </body>
 </html>
