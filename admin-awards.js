@@ -7,15 +7,15 @@
     ["Individual Champion", "Most points (best weeks count)"],
     ["Team Champion", "Most team points"],
     ["Kinnett Award", "Picked by the committee"],
-    ["Green Machine Award", "Most greens in regulation per round"],
-    ["Fairway Finder Award", "Most fairways hit per round"],
-    ["Scotty Cameron", "Fewest putts per round"],
-    ["Vardon Award", "Lowest average gross"],
-    ["Byron Nelson", "Lowest average net"],
-    ["Most Improved", "Biggest handicap drop, week 1 to season end"],
-    ["Net Ringer Award", "Lowest 18-hole net ringer"],
-    ["Ringer Award", "Lowest 18-hole gross ringer"],
-    ["Toilet Bowl", "Fewest total points"],
+    ["Green Machine Award", "Most greens in regulation per round · min. rounds"],
+    ["Fairway Finder Award", "Most fairways hit per round · min. rounds"],
+    ["Scotty Cameron", "Fewest putts per round · min. rounds"],
+    ["Vardon Award", "Lowest average gross · min. rounds"],
+    ["Byron Nelson", "Lowest average net · min. rounds"],
+    ["Most Improved", "Biggest handicap drop, week 1 to season end · min. rounds · returning leaguers only"],
+    ["Net Ringer Award", "Lowest 18-hole net ringer · min. rounds"],
+    ["Ringer Award", "Lowest 18-hole gross ringer · min. rounds"],
+    ["Toilet Bowl", "Fewest total points · everyone counts, missed weeks score 0"],
     ["Full Flock Award", "Beat par on all 18 holes this season (lifetime)"]
   ];
   const MANUAL_ONLY = new Set(["Kinnett Award"]);
@@ -32,13 +32,17 @@
     const finals = (evs || []).filter(e => e.status === "final"), ids = finals.map(e => e.id);
     const P = new Map(A.players.map(p => [p.id, p]));
     const regulars = new Set((tms || []).flatMap(t => (t.team_players || []).map(x => x.player_id)));
-    const [{ data: res }, { data: tres }, { data: sc }, { data: tees }, { data: ff }] = await Promise.all([
+    const [{ data: res }, { data: tres }, { data: sc }, { data: tees }, { data: ff }, { data: sy }] = await Promise.all([
       ids.length ? sb.from("results").select("event_id,player_id,kind,tee,gross,net,points,handicap_index,course_handicap").in("event_id", ids).not("player_id", "is", null) : { data: [] },
       ids.length ? sb.from("team_results").select("event_id,team_id,match_points").in("event_id", ids) : { data: [] },
       ids.length ? sb.from("scores").select("event_id,player_id,hole,strokes,putts,fairway,green").in("event_id", ids) : { data: [] },
       sb.from("tees").select("name,tee_holes(hole,par,stroke_index)"),
-      sb.from("full_flock_awards").select("player_id,achieved_year").eq("achieved_year", season.year)
+      sb.from("full_flock_awards").select("player_id,achieved_year").eq("achieved_year", season.year),
+      sb.rpc("player_seasons")
     ]);
+    // Awards need half the season's weeks played (9 of 18); the Toilet Bowl doesn't
+    const weeks = (evs || []).filter(e => e.status !== "rained_out").length, minR = Math.ceil(weeks / 2);
+    const returning = new Set((sy || []).filter(x => x.year < season.year).map(x => x.player_id));
     // Regulars only, like the sheet (subs aren't eligible)
     const R = (res || []).filter(r => r.kind === "regular" && regulars.has(r.player_id));
     const evDate = new Map(finals.map(e => [e.id, e.play_date]));
@@ -57,14 +61,14 @@
         hi1: first?.handicap_index != null ? +first.handicap_index : null };
     });
     // Winner(s) of a stat: ties share it
-    const pick = (key, low, fmt) => {
-      const xs = pl.filter(p => p[key] != null); if (!xs.length) return null;
+    const pick = (key, low, fmt, any) => {
+      const xs = pl.filter(p => p[key] != null && (any || p.n >= minR)); if (!xs.length) return null;
       const bestV = xs.reduce((m, p) => low ? Math.min(m, p[key]) : Math.max(m, p[key]), low ? Infinity : -Infinity);
       const w = xs.filter(p => Math.abs(p[key] - bestV) < 1e-9);
       return { winner: w.map(p => nm(P.get(p.id))).join(" & "), value: fmt(bestV) };
     };
     out["Individual Champion"] = pick("best", false, v => `${f(v)} pts`);
-    out["Toilet Bowl"] = pick("total", true, v => `${f(v)} pts`);
+    out["Toilet Bowl"] = pick("total", true, v => `${f(v)} pts`, true);
     out["Vardon Award"] = pick("gross", true, v => `${f(v, 2)} avg gross`);
     out["Byron Nelson"] = pick("net", true, v => `${f(v, 2)} avg net`);
     out["Fairway Finder Award"] = pick("fw", false, v => `${f(v, 2)} fairways a round`);
@@ -72,7 +76,7 @@
     out["Scotty Cameron"] = pick("putts", true, v => `${f(v, 2)} putts a round`);
     // Most improved: week-1 index vs index now (only meaningful for the current season)
     if (season.is_current) {
-      pl.forEach(p => { const h = A.hcps.get(p.id); p.drop = p.hi1 != null && h?.handicap_index != null ? +h.handicap_index - p.hi1 : null; p.h2 = h?.handicap_index; });
+      pl.forEach(p => { const h = A.hcps.get(p.id); p.drop = returning.has(p.id) && p.hi1 != null && h?.handicap_index != null ? +h.handicap_index - p.hi1 : null; p.h2 = h?.handicap_index; });
       const m = pick("drop", true, v => (+v).toFixed(2));
       if (m) { const w = pl.find(p => p.drop != null && p.drop.toFixed(2) === m.value); m.value = `${w.hi1.toFixed(2)} → ${(+w.h2).toFixed(2)} (${(+w.drop).toFixed(2)})`; }
       out["Most Improved"] = m;
@@ -94,11 +98,11 @@
     const ring = new Map();
     (sc || []).forEach(x => { const r = rinfo.get(x.event_id + ":" + x.player_id); if (!r || x.strokes == null) return;
       const o = ring.get(x.player_id) || { id: x.player_id, g: {}, n: {} }; o.g[x.hole] = Math.min(o.g[x.hole] ?? 99, x.strokes); o.n[x.hole] = Math.min(o.n[x.hole] ?? 99, x.strokes - strokesOn(r, x.hole)); ring.set(x.player_id, o); });
-    const full = [...ring.values()].filter(o => Object.keys(o.g).length === 18).map(o => ({ id: o.id, rg: Object.values(o.g).reduce((a, b) => a + b, 0), rn: Object.values(o.n).reduce((a, b) => a + b, 0) }));
+    const full = [...ring.values()].filter(o => Object.keys(o.g).length === 18 && (by.get(o.id)?.rounds.length || 0) >= minR).map(o => ({ id: o.id, rg: Object.values(o.g).reduce((a, b) => a + b, 0), rn: Object.values(o.n).reduce((a, b) => a + b, 0) }));
     const rp = (key) => { if (!full.length) return null; const mn = Math.min(...full.map(o => o[key])); return { winner: full.filter(o => o[key] === mn).map(o => nm(P.get(o.id))).join(" & "), value: String(mn) }; };
     out["Ringer Award"] = rp("rg"); out["Net Ringer Award"] = rp("rn");
     if ((ff || []).length) out["Full Flock Award"] = { winner: ff.map(x => nm(P.get(x.player_id))).join(" & "), value: String(season.year) };
-    return { out, finals: finals.length, total: (evs || []).filter(e => e.status !== "rained_out").length, done: (evs || []).length > 0 && (evs || []).every(e => e.status === "final" || e.status === "rained_out") };
+    return { out, minR, finals: finals.length, total: (evs || []).filter(e => e.status !== "rained_out").length, done: (evs || []).length > 0 && (evs || []).every(e => e.status === "final" || e.status === "rained_out") };
   }
 
   // Write the worked-out winners into the table, leaving rows an admin typed alone
@@ -123,7 +127,7 @@
   async function loadAwards(force) {
     const season = A.season; if (!season) return;
     $("awSeason").textContent = season.name;
-    const [{ out, finals, total, done }, { data: sv }] = await Promise.all([compute(season), sb.from("season_awards").select("*").eq("season_id", season.id)]);
+    const [{ out, minR, finals, total, done }, { data: sv }] = await Promise.all([compute(season), sb.from("season_awards").select("*").eq("season_id", season.id)]);
     let saved = new Map((sv || []).map(r => [r.award, r]));
     // Season over and nothing saved yet: fill it in automatically
     const anyAuto = [...saved.values()].some(r => !r.manual);
@@ -137,7 +141,7 @@
       AWARDS.map(([a, how]) => {
         const s = saved.get(a), c = out[a], manual = MANUAL_ONLY.has(a) || s?.manual;
         const w = s ? s.winner ?? "" : (MANUAL_ONLY.has(a) ? "" : c?.winner ?? ""), v = s ? s.value ?? "" : (MANUAL_ONLY.has(a) ? "" : c?.value ?? "");
-        return `<tr data-a="${esc(a)}"><td><b>${esc(a)}</b><div class="note" style="margin:2px 0 0">${esc(how)}</div></td>
+        return `<tr data-a="${esc(a)}"><td><b>${esc(a)}</b><div class="note" style="margin:2px 0 0">${esc(how.replace("min. rounds", `at least ${minR} rounds`))}</div></td>
           <td><input data-w value="${esc(w)}" placeholder="${MANUAL_ONLY.has(a) ? "Type the winner" : ""}" style="width:300px"></td>
           <td><input data-v value="${esc(v)}" style="width:150px"></td>
           <td class="note">${MANUAL_ONLY.has(a) ? "Entered by hand" : c ? esc(`${c.winner} · ${c.value}`) : a === "Full Flock Award" ? "No one finished it this season" : "Not enough data yet"}${!MANUAL_ONLY.has(a) && s?.manual ? "<br><b>Typed over</b>" : ""}</td>
