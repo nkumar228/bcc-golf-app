@@ -267,6 +267,8 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .tnrow.lead b { color: var(--green); }
 .pace { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 .pace b { color: var(--ink, inherit); }
+.pace.warn { background: #fff4d6; color: #6b4e00; border: 1px solid #f0c75e; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+.pace.warn b { color: #6b4e00; }
 .pace.slow b { color: var(--green); }
 .pace.fast b, .pace.ok b { color: #2e8b57; }
 .ffleft { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1241,11 +1243,16 @@ the spirit, intent, and fairness of league competition.</p>
     const hm = m => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`;
     const tag = Math.abs(diff) <= 2 ? "On pace" : diff > 0 ? `${diff} min behind pace` : `${-diff} min ahead of pace`;
     // A full hole behind (Nitin): the group in front had already finished the NEXT hole when this group finished a hole.
-    // Informative only (Nitin 2026-11-09): no warning or on-the-clock, just a note on the pace line.
-    const fullBehind = k => { const a = pc.ahead?.times[k + 1], m = pc.times[k]; return a != null && m != null && a <= m; };
-    const holeGap = pc.ahead && thru < 9 && fullBehind(thru - 1) ? ` · a full hole behind the group in front` : "";
+    // With a 5-minute buffer: they'd scored the next hole at least 5 minutes before this group scored this one.
+    // An alert that says so (Nitin 2026-11-09); no on-the-clock.
+    const fullBehind = k => { const a = pc.ahead?.times[k + 1], m = pc.times[k]; return a != null && m != null && a + 5 * 60000 <= m; };
+    if (pc.ahead && thru < 9 && fullBehind(thru - 1)) {
+      el.className = "pace warn";
+      el.innerHTML = `⚠️ <b>A full hole behind</b> the group in front (${pc.ahead.name}) · ${tag.toLowerCase()} · thru ${thru}`;
+      el.hidden = false; return;
+    }
     el.className = "pace " + (diff > 5 ? "slow" : diff < -2 ? "fast" : "ok");
-    el.innerHTML = thru >= 9 ? `⏱ Round time ${hm((last - start) / 60000)} · target ${hm(pc.target)}` : `⏱ <b>${tag}</b> · thru ${thru} · target ${hm(pc.target)} for 9${holeGap}`;
+    el.innerHTML = thru >= 9 ? `⏱ Round time ${hm((last - start) / 60000)} · target ${hm(pc.target)}` : `⏱ <b>${tag}</b> · thru ${thru} · target ${hm(pc.target)} for 9`;
     el.hidden = false;
   }
   function renderHole() {
