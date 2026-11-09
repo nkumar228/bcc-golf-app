@@ -1779,21 +1779,23 @@ the spirit, intent, and fairness of league competition.</p>
     // Full Flock Award: lifetime best per hole; filled squares beat par
     async function loadFlock() {
       if (!sb || !session?.real) return;
-      const [{ data: lr, error }, { data: aw }, { data: ps }, { data: th }] = await Promise.all([
+      const [{ data: lr, error }, { data: aw }, { data: ps }, { data: th }, { data: sy }] = await Promise.all([
         sb.rpc("lifetime_ringer"), sb.from("full_flock_awards").select("player_id,achieved_year").order("achieved_year"),
-        sb.from("players").select("id,first_name,last_name"), sb.from("tees").select("name,tee_holes(hole,par)").eq("name", "Blue")
+        sb.from("players").select("id,first_name,last_name"), sb.from("tees").select("name,tee_holes(hole,par)").eq("name", "Blue"), sb.rpc("player_seasons")
       ]);
       if (error) { $("ffTable").innerHTML = '<tbody><tr><td class="updated" style="padding:14px">Couldn\'t load the Full Flock board.</td></tr></tbody>'; return; }
       const par = {}; (th || []).forEach(t => (t.tee_holes || []).forEach(h => par[h.hole] = h.par));
       const P = new Map((ps || []).map(p => [p.id, p])), won = new Map((aw || []).map(a => [a.player_id, a.achieved_year]));
       const by = new Map(); (lr || []).forEach(r => { const o = by.get(r.player_id) || { id: r.player_id, h: {}, n: 0 }; o.h[r.hole] = r.best; if (r.first_under != null) o.n++; by.set(r.player_id, o); });
       const nm = p => p ? `${p.first_name} ${(p.last_name || "?")[0]}.` : "?";
+      // How long it took: seasons played up to and including the year they finished
+      const took = (id, y) => { const n = (sy || []).filter(x => x.player_id === id && x.year <= y).length; return n ? `${n} season${n === 1 ? "" : "s"}` : ""; };
       const rows = [...by.values()].filter(o => P.has(o.id)).sort((a, b) => b.n - a.n || nm(P.get(a.id)).localeCompare(nm(P.get(b.id))));
-      $("ffWinners").innerHTML = won.size ? `<p class="label" style="margin:0 0 6px">Award winners</p><div class="ffwin">${[...won].map(([id, y]) => `<span>🏆 ${esc(nm(P.get(id)))} · ${y}</span>`).join("")}</div>` : '<p class="updated" style="margin:0">No one has the full flock yet.</p>';
+      $("ffWinners").innerHTML = won.size ? `<p class="label" style="margin:0 0 6px">Award winners</p><div class="ffwin">${[...won].map(([id, y]) => `<span>🏆 ${esc(nm(P.get(id)))} · ${y}${took(id, y) ? ` · in ${took(id, y)}` : ""}</span>`).join("")}</div>` : '<p class="updated" style="margin:0">No one has the full flock yet.</p>';
       // The signed-in player's own card: holes still to beat par on, or the award
       const me = session.playerId, mine = by.get(me), mb = $("ffMine");
       if (me && P.has(me)) {
-        if (won.has(me)) mb.innerHTML = `<div class="ffdone"><span>🏆</span><div><p class="label">Your Full Flock</p><h2 style="margin:4px 0 2px">You earned the Full Flock Award!</h2><p class="updated" style="margin:0">Better than par on all 18 holes, finished in ${won.get(me)}.</p></div></div>`;
+        if (won.has(me)) mb.innerHTML = `<div class="ffdone"><span>🏆</span><div><p class="label">Your Full Flock</p><h2 style="margin:4px 0 2px">You earned the Full Flock Award!</h2><p class="updated" style="margin:0">Better than par on all 18 holes, finished in ${won.get(me)}${took(me, won.get(me)) ? ` after ${took(me, won.get(me))}` : ""}.</p></div></div>`;
         else {
           const left = Array.from({ length: 18 }, (_, i) => i + 1).filter(h => !(mine?.h[h] != null && par[h] && mine.h[h] < par[h]));
           mb.innerHTML = `<p class="label">Your Full Flock</p><h2 style="margin:4px 0 2px">${18 - left.length} of 18 done · ${left.length} to go</h2><p class="updated" style="margin:0 0 8px">Holes left to beat par on, with your best so far:</p><div class="ffleft">${left.map(h => `<span><b>${h}</b><small>par ${par[h] ?? "?"} · best ${mine?.h[h] ?? "–"}</small></span>`).join("")}</div>`;
