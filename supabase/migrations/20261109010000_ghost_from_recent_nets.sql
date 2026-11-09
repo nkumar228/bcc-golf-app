@@ -35,3 +35,15 @@ returns table (player_id bigint, net int) language sql stable security definer s
   select p.id, public.ghost_net(p.id, p_course, p_before, p_default) from public.players p;
 $$;
 grant execute on function public.ghost_nets(bigint, date, int) to authenticated;
+
+-- How many rounds each golfer has on one nine before a date (a sub's first 2 there count as the ghost for the team).
+create or replace function public.rounds_on_nine(p_course bigint, p_before date)
+returns table (player_id bigint, n int) language sql stable security definer set search_path = '' as $$
+  select x.player_id, count(*)::int from (
+    select h.player_id from public.net_history h where h.course_id = p_course and h.played_on < p_before
+    union all
+    select r.player_id from public.results r join public.events e on e.id = r.event_id
+      where r.player_id is not null and r.kind <> 'ghost' and e.course_id = p_course and e.play_date < p_before
+  ) x group by x.player_id;
+$$;
+grant execute on function public.rounds_on_nine(bigint, date) to authenticated;
