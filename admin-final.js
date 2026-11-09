@@ -4,6 +4,7 @@
   const A = window.BCCAdmin, { sb, $, esc, toast, check } = A;
   // The 2026 list, offered when a Cup has no contest holes yet and no earlier Cup to copy from
   const LIST_2026 = [[3, "Closest GIR", 20], [4, "Longest Drive (Blue Tees)", 20], [6, "Closest to Pin", 20], [10, "Shortest Drive", 20], [12, "Closest to Pin", 20], [13, "Longest Drive (White/Gold)", 20], [16, "Longest Putt", 20], [null, "Fastest Closeout", 40]];
+  const PER_PLAYER = 10;
   let cup = null, D = null, contests = [];
   const P = id => A.players.find(p => p.id === id);
   const nm = id => { const p = P(id); return p ? `${p.first_name} ${p.last_name}` : ""; };
@@ -38,7 +39,10 @@
 
   function render() {
     const box = $("finalBody"), c = carts();
-    const used = contests.reduce((t, x) => t + (+x.credit || 0), 0), budget = cup.contest_budget;
+    // Prize money is $10 for every golfer playing the Final (Nitin). Counts the players picked; until then, two per match.
+    const fr = finalRound(), picked = new Set((D?.entries || []).filter(e => fr && e.round_id === fr.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
+    const players = Math.max(picked.size, (fr?.matches || 0) * 2), budget = players ? players * PER_PLAYER : null;
+    const used = contests.reduce((t, x) => t + (+x.credit || 0), 0);
     const cartHtml = !c ? '<p class="note">This Cup has no Final yet. Add an 18-hole singles round above and the carts fill in from its matchups.</p>' :
       `<p class="note">${esc(c.round.name)} · ${c.round.play_date ? new Date(c.round.play_date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) : "no date yet"} · first tee ${m2t(t2m(c.round.tee_time || "08:00"))}, every ${A.season?.tee_gap || 8} minutes. Two matches per group; each side's two players share a cart. Change the order by moving matches in the lineups.</p>
       <div class="scroll"><table><thead><tr><th>Tee time</th><th>Matches</th><th>Cart</th><th>Players</th></tr></thead><tbody>${c.groups.map(g => g.carts.map((k, i) => `<tr>${i === 0 ? `<td rowspan="${g.carts.length}"><b>${g.time}</b></td><td rowspan="${g.carts.length}">${g.matches.map(m => "Match " + m).join(", ")}</td>` : ""}<td>Cart ${k.no} <span class="note">${esc(k.side.name)}</span></td><td>${k.players.map(p => p ? esc(nm(p)) : '<span class="note">not picked yet</span>').join(" &amp; ")}</td></tr>`).join("")).join("")}</tbody></table></div>`;
@@ -46,7 +50,7 @@
       <h3 style="margin:16px 0 6px">Contest holes</h3>
       <div class="scroll"><table id="ctTable"><thead><tr><th>Hole</th><th>Challenge</th><th>Merch credit</th><th></th></tr></thead><tbody>${contests.map(x => `<tr data-id="${x.id}"><td><input class="w-num" type="number" min="1" max="18" data-k="hole" value="${x.hole ?? ""}" placeholder="any"></td><td><input data-k="challenge" value="${esc(x.challenge)}" style="width:260px"></td><td><input class="w-num" type="number" min="0" step="1" data-k="credit" value="${x.credit ?? ""}"></td><td><button class="btn danger" type="button" data-del style="padding:5px 9px;font-size:13px">Remove</button></td></tr>`).join("") || '<tr><td colspan="4" class="note">No contest holes yet.</td></tr>'}</tbody></table></div>
       <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="btn secondary" type="button" id="ctAdd">Add a contest</button>${!contests.length ? '<button class="btn secondary" type="button" id="ctCopy">Copy last Cup\'s list</button>' : ""}
-        <label class="note" style="margin-left:auto">Money available <input class="w-num" type="number" min="0" id="ctBudget" value="${budget ?? ""}"></label>
+        <span class="note" style="margin-left:auto">Money available <b>${budget != null ? money(budget) : "–"}</b>${players ? ` (${players} players${picked.size >= players ? "" : " expected"} × $${PER_PLAYER})` : " (set the Final's matches first)"}</span>
         <span class="note">Used <b>${money(used) || "$0"}</b>${budget != null ? (used > budget ? ` · <b style="color:#c00">over by ${money(used - budget)}</b>` : ` · left <b>${money(budget - used)}</b>`) : ""}</span></div>
       <div class="row" style="margin-top:14px;gap:8px"><button class="btn" type="button" id="finPrint">Print sheet for the course</button><button class="btn secondary" type="button" id="finCopy">Copy as text for email</button></div>`;
     box.querySelectorAll("#ctTable [data-k]").forEach(el => el.onchange = async () => {
@@ -59,15 +63,13 @@
     });
     $("ctAdd").onclick = async () => { const { error } = await sb.from("cup_contests").insert({ cup_id: cup.id, hole: null, challenge: "", credit: 20, sort: contests.length }); if (check(error, "Added")) load(); };
     if ($("ctCopy")) $("ctCopy").onclick = async () => {
-      const { data: prev } = await sb.from("cups").select("id,contest_budget,year").neq("id", cup.id).order("year", { ascending: false });
-      let rows = [], bud = null;
-      for (const p of prev || []) { const { data } = await sb.from("cup_contests").select("hole,challenge,credit,sort").eq("cup_id", p.id).order("sort"); if (data?.length) { rows = data; bud = p.contest_budget; break; } }
-      if (!rows.length) { rows = LIST_2026.map(([hole, challenge, credit], i) => ({ hole, challenge, credit, sort: i })); bud = 180; }
+      const { data: prev } = await sb.from("cups").select("id,year").neq("id", cup.id).order("year", { ascending: false });
+      let rows = [];
+      for (const p of prev || []) { const { data } = await sb.from("cup_contests").select("hole,challenge,credit,sort").eq("cup_id", p.id).order("sort"); if (data?.length) { rows = data; break; } }
+      if (!rows.length) { rows = LIST_2026.map(([hole, challenge, credit], i) => ({ hole, challenge, credit, sort: i })); }
       const { error } = await sb.from("cup_contests").insert(rows.map(r => ({ ...r, cup_id: cup.id })));
-      if (cup.contest_budget == null && bud != null) { await sb.from("cups").update({ contest_budget: bud }).eq("id", cup.id); cup.contest_budget = bud; }
       if (check(error, "Copied")) load();
     };
-    $("ctBudget").onchange = async e => { const v = e.target.value === "" ? null : +e.target.value; const { error } = await sb.from("cups").update({ contest_budget: v }).eq("id", cup.id); if (check(error)) { cup.contest_budget = v; render(); } };
     $("finPrint").onclick = printSheet;
     $("finCopy").onclick = async () => { try { await navigator.clipboard.writeText(asText()); toast("Copied. Paste it into your email."); } catch { toast("Couldn't copy here; use Print instead.", true); } };
   }
