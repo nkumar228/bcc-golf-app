@@ -696,7 +696,8 @@ tr.inc td { color: var(--bad); }
       f("best_of", "Weeks that count", "Standings use each player's best this many weeks.") +
       f("handicap_rounds", "Handicap: recent rounds", "How many recent rounds the handicap looks at.") +
       f("handicap_best", "Handicap: best rounds used", "How many of those count.") +
-      f("handicap_percent", "Handicap percent", "Share of the handicap index players get.");
+      f("handicap_percent", "Handicap percent", "Share of the handicap index players get.") +
+      f("pace_minutes", "Pace of play (minutes for 9 holes)", "The scorecard shows each group how far ahead or behind this pace they are.");
     $("seasonForm").querySelectorAll("[data-k]").forEach(el => el.onchange = async () => {
       const k = el.dataset.k;
       const v = k === "points_table" ? el.value.split(/[,\s]+/).filter(Boolean).map(Number) : +el.value;
@@ -921,7 +922,7 @@ tr.inc td { color: var(--bad); }
     e.preventDefault();
     const name = $("nsName").value.trim(), start = $("nsStart").value, weeks = +$("nsWeeks").value, from = seasons.find(x => x.id === +$("nsFrom").value);
     if (seasons.some(x => x.name.toLowerCase() === name.toLowerCase())) return toast("There's already a season with that name.", true);
-    const rules = from ? Object.fromEntries(["ghost_net","points_table","team_win","team_tie","best_of","handicap_rounds","handicap_best","handicap_percent","first_tee","tee_gap"].filter(k => k in from).map(k => [k, from[k]])) : {};
+    const rules = from ? Object.fromEntries(["ghost_net","points_table","team_win","team_tie","best_of","handicap_rounds","handicap_best","handicap_percent","first_tee","tee_gap","pace_minutes"].filter(k => k in from).map(k => [k, from[k]])) : {};
     const { data: ns, error } = await sb.from("seasons").insert({ name, year: +start.slice(0, 4), is_current: false, ...rules }).select().single();
     if (!check(error, "")) return;
     const nine0 = +$("nsNine").value, other = (courses.find(c => c.id !== nine0) || courses[0]).id;

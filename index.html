@@ -260,6 +260,10 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .ffg span.u { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
 .ffg.hd span { background: none; border: 0; height: 14px; font-size: 11px; }
 .stand.ff tr.won td { background: var(--green-soft); }
+.pace { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.pace b { color: var(--ink, inherit); }
+.pace.slow b { color: var(--green); }
+.pace.fast b, .pace.ok b { color: #2e8b57; }
 .ffleft { display: flex; flex-wrap: wrap; gap: 6px; }
 .ffleft span { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .ffleft b { font-family: var(--display); font-size: 20px; line-height: 1; }
@@ -661,6 +665,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 
   <section style="display:grid;gap:8px" aria-labelledby="hl">
     <div class="head"><p class="label" id="hl">Hole</p><span class="updated" id="teeInfo">Tee time 5:08 PM · start hole 1</span></div>
+    <p class="pace" id="paceLine" hidden></p>
     <div class="holes" id="holes" role="tablist"></div>
   </section>
 
@@ -1218,8 +1223,22 @@ the spirit, intent, and fairness of league competition.</p>
     });
   }
 
+  // Minutes ahead/behind pace. The clock starts when the group's first hole goes in (less that hole's share of the
+  // target), so swapped tee times don't matter. Every hole gets an equal share (2:15 = 15 minutes a hole).
+  function renderPace() {
+    const el = $("paceLine"), pc = LIVE?.pace; if (!el) return;
+    if (!pc || !pc.times[0] || pc.first == null) { el.hidden = true; return; }
+    let thru = 0; while (thru < 9 && pc.times[thru] != null) thru++;
+    const E = k => pc.target * k / 9;
+    const start = pc.first - E(1) * 60000, last = pc.times[thru - 1], diff = Math.round(((last - start) / 60000) - E(thru));
+    const hm = m => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+    const tag = Math.abs(diff) <= 2 ? "On pace" : diff > 0 ? `${diff} min behind pace` : `${-diff} min ahead of pace`;
+    el.className = "pace " + (diff > 5 ? "slow" : diff < -2 ? "fast" : "ok");
+    el.innerHTML = thru >= 9 ? `⏱ Round time ${hm((last - start) / 60000)} · target ${hm(pc.target)}` : `⏱ <b>${tag}</b> · thru ${thru} · target ${hm(pc.target)} for 9`;
+    el.hidden = false;
+  }
   function renderHole() {
-    applyInstant();
+    applyInstant(); renderPace();
     const i = state.hole;
     $("holeNo").innerHTML = "<span>HOLE</span>" + holeLabel(i);
     $("fPar").textContent = COURSE.par[i];
@@ -1453,7 +1472,7 @@ the spirit, intent, and fairness of league competition.</p>
       if (groupChanged) { const n = COURSE.par.findIndex((_, i) => !state.saved.has(i)); state.hole = n < 0 ? 8 : n; loadPending(); }
       if (first) { $("finish").hidden = true; $("scoreNote").hidden = true; $("toast").textContent = ""; }
       if (!opts.quiet || groupChanged) renderAll(); else { renderHoles(); renderCard(); renderBoard(); if (!opts.keepPending) renderHole(); }
-      stamp();
+      stamp(); renderPace();
     },
     isLive: () => !!LIVE
   };
@@ -1667,7 +1686,12 @@ the spirit, intent, and fairness of league competition.</p>
       $("liveNote").hidden = false;
       $("liveNote").textContent = ev.status === "final" ? "This week is final. Scores can only be changed by an admin." : "Scores save to the league for everyone. The board refreshes every 20 seconds.";
       const groupGhosts = match ? [match.team_a, match.team_b].flatMap(tid => ghostsByTeam[tid] || []) : [];
+      // Pace of play for the group on screen: when each hole was first entered vs the season's target for 9 holes
+      const gIds = players.filter(p => p.group).map(p => p.id), at = {};
+      (scoreRows || []).forEach(r => { if (!gIds.includes(r.player_id)) return; const t = Date.parse(r.created_at || r.updated_at); if (!isNaN(t)) (at[r.hole] = at[r.hole] || {})[r.player_id] = t; });
+      const pace = { target: +season.pace_minutes || 135, times: hs.map(h => { const o = at[h.hole] || {}; return gIds.length && gIds.every(id => o[id] != null) ? Math.max(...gIds.map(id => o[id])) : null; }), first: (() => { const o = at[hs[0]?.hole] || {}; const v = Object.values(o); return v.length ? Math.min(...v) : null; })() };
       return {
+        pace,
         groupKey: match ? match.id : 0,
         course: { par: hs.map(x => x.par), yds: hs.map(x => x.yards), hcp: hs.map(x => x.stroke_index), holeNo: hs.map(x => x.hole) },
         points: season.points_table, teams: Object.fromEntries(teams.map(t => [t.number, t.name])),
@@ -1683,7 +1707,7 @@ the spirit, intent, and fairness of league competition.</p>
 
     async function refreshScores(quiet) {
       if (!ctx) return;
-      const { data, error } = await sb.from("scores").select("player_id,hole,strokes,putts,fairway,green").eq("event_id", ctx.ev.id);
+      const { data, error } = await sb.from("scores").select("player_id,hole,strokes,putts,fairway,green,created_at,updated_at").eq("event_id", ctx.ev.id);
       if (error) return;
       window.BCCScore.setLive(build(data), { quiet, keepPending: quiet });
       if (!quiet) { renderHome(); setupRounds(); }
