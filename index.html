@@ -1762,7 +1762,7 @@ the spirit, intent, and fairness of league competition.</p>
         const r = rinfo.get(x.event_id + ":" + x.player_id); if (!r) return;
         let v = x.strokes;
         if (ringKind === "net") {
-          const t = tees.find(t => t.name === r.tee) || tees.find(t => t.name === "Blue"), si = (t?.tee_holes || []).filter(h => h.hole >= base && h.hole < base + 9).sort((a, b) => a.hole - b.hole).map(h => h.stroke_index);
+          const onNine = t => t.name && (t.tee_holes || []).some(h => h.hole === x.hole), t = tees.find(t => t.name === r.tee && onNine(t)) || tees.find(t => t.name === "Blue" && onNine(t)), si = (t?.tee_holes || []).filter(h => h.hole >= base && h.hole < base + 9).sort((a, b) => a.hole - b.hole).map(h => h.stroke_index);
           const rk = si.map(q => si.filter(z => z < q).length + 1), i = x.hole - base, h = r.course_handicap || 0;
           v -= h < 0 ? (rk[i] > 9 + Math.max(h, -9) ? -1 : 0) : Math.floor(h / 9) + (rk[i] <= h % 9 ? 1 : 0);
         }

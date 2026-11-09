@@ -106,6 +106,7 @@ tr.inc td { color: var(--bad); }
       <button type="button" data-tab="season">Season rules</button>
       <button type="button" data-tab="seasons">Seasons</button>
       <button type="button" data-tab="cup">Queen City Cup</button>
+      <button type="button" data-tab="awards">Awards</button>
       <button type="button" data-tab="champions">Champions</button>
       <label class="row" style="gap:6px;margin-left:auto;font-weight:600">Season <select id="seasonPick"></select></label>
     </nav>
@@ -252,6 +253,14 @@ tr.inc td { color: var(--bad); }
       <p class="note">Past results shown on the app's Cup history page. Cups run in the app show up there by themselves once every round is final; add earlier years here. Leave Winner blank to go by points. Add a league photo for any year, including Cups played in the app.</p>
       <div class="scroll"><table id="histTable"></table></div>
       <div class="row" style="margin-top:10px"><button class="btn secondary" type="button" id="histAdd">Add a year</button></div>
+    </section>
+
+    <section class="card" data-panel="awards" hidden>
+      <h2>Season awards · <span id="awSeason"></span></h2>
+      <p class="note" id="awStatus"></p>
+      <p class="note">Every award fills itself in from the season's final weeks except the Kinnett Award, which you type in. Ties share an award. You can type over any winner; that one is then kept as typed until you press "Use worked-out". The Individual and Team Champions are also copied into the Hall of Champions if that year is empty there.</p>
+      <div class="scroll"><table id="awTable"></table></div>
+      <div class="row" style="margin-top:10px"><button class="btn secondary" type="button" id="awRecalc">Recalculate now</button></div>
     </section>
 
     <section class="card" data-panel="champions" hidden>
@@ -857,6 +866,8 @@ tr.inc td { color: var(--bad); }
       toast(`Full Flock Award: ${ff.data.map(x => x.name).join(" and ")}!`);
       sb.functions.invoke("push", { body: { action: "full_flock" } }).catch(() => {});
     }
+    // Last week of the season? The Awards tab fills itself in and saves.
+    window.BCCAdmin.refreshAwards?.();
   };
   // Start a week's scoring over (e.g. a half-played week that has to be replayed)
   $("wkClear").onclick = async () => {
@@ -985,12 +996,13 @@ Nitin`;
     if (check(error, "Marked as sent")) { to.forEach(p => p.welcome_sent_at = now); wPicked.clear(); renderWelcome(); }
   };
 
-  window.BCCAdmin = { sb, $, esc, toast, check, get players() { return players; }, get courses() { return courses; }, get hcps() { return hcps; } };
+  window.BCCAdmin = { sb, $, esc, toast, check, get season() { return season; }, get players() { return players; }, get courses() { return courses; }, get hcps() { return hcps; } };
   start();
 })();
 </script>
 <script src="cup.js?v=58"></script>
 <script src="admin-cup.js?v=58"></script>
 <script src="admin-champions.js?v=58"></script>
+<script src="admin-awards.js?v=59"></script>
 </body>
 </html>
