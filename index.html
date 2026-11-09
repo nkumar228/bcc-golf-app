@@ -248,6 +248,7 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .lock { width: 13px; height: 13px; vertical-align: -1px; }
 .thru .lock { color: var(--muted); }
 .ghostrow { background: var(--bg); }
+.pname small.subnote { display: block; color: var(--green); font-weight: 600; }
 .locked { display: inline-flex; align-items: baseline; gap: 6px; padding: 8px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
 .locked .num { font-size: 28px; font-weight: 700; color: var(--ink); }
 .locked small { font-size: 12px; }
@@ -1185,7 +1186,7 @@ the spirit, intent, and fairness of league competition.</p>
       row.className = "prow" + (pl.you ? " you" : "");
       row.innerHTML = `
         <div class="pname">${pl.name}${pl.you ? " (you)" : ""}
-          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · hcp ${pl.h}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small></div>
+          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · hcp ${pl.h}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small>${pl.subNote ? `<small class="subnote">${pl.subNote}</small>` : ""}</div>
         <div class="step" role="group" aria-label="Strokes for ${pl.name}">
           <button type="button" aria-label="One fewer">−</button>
           <output class="${cls(diff)}">${v}</output>
@@ -1525,8 +1526,11 @@ the spirit, intent, and fairness of league competition.</p>
         sb.from("lineups").select("id,team_id,player_id,kind,tee,players!lineups_player_id_fkey(id,first_name,last_name,default_tee)").eq("event_id", ev.id).order("id"),
         sb.from("player_handicaps").select("player_id,handicap_index")
       ]);
-      const { data: gn } = await sb.rpc("ghost_nets", { p_course: ev.course_id, p_before: ev.play_date, p_default: season.ghost_net ?? 36 });
-      ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])), ghostNet: new Map((gn || []).map(g => [g.player_id, g.net])) };
+      const [{ data: gn }, { data: rn }] = await Promise.all([
+        sb.rpc("ghost_nets", { p_course: ev.course_id, p_before: ev.play_date, p_default: season.ghost_net ?? 36 }),
+        sb.rpc("rounds_on_nine", { p_course: ev.course_id, p_before: ev.play_date })
+      ]);
+      ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])), ghostNet: new Map((gn || []).map(g => [g.player_id, g.net])), nineRounds: new Map((rn || []).map(g => [g.player_id, g.n])) };
       await refreshScores(false);
     }
 
@@ -1536,9 +1540,16 @@ the spirit, intent, and fairness of league competition.</p>
       if (lu.length) {
         // A ghost stands in for a missing regular: the one in its slot, or the only one missing
         const regs = (team.team_players || []).map(tp => tp.players).filter(Boolean), absent = regs.filter(p => !lu.some(l => l.player_id === p.id));
-        return lu.map((l, i) => { if (l.kind !== "ghost") return { p: l.players, tee: l.tee || l.players?.default_tee, sub: l.kind === "sub" };
-          const f = absent.length === 1 ? absent[0] : absent.find(p => p.id === regs[i]?.id) || absent[0];
-          return { ghost: true, for: f, net: (f && ctx.ghostNet?.get(f.id)) ?? ctx.season.ghost_net ?? 36 }; });
+        const gfor = i => { const f = absent.length === 1 ? absent[0] : absent.find(p => p.id === regs[i]?.id) || absent[0]; return { for: f, net: (f && ctx.ghostNet?.get(f.id)) ?? ctx.season.ghost_net ?? 36 }; };
+        const nm = p => p ? `${p.first_name} ${(p.last_name || "?")[0]}.` : "";
+        return lu.map((l, i) => {
+          if (l.kind === "ghost") return { ghost: true, ...gfor(i) };
+          if (l.kind !== "sub") return { p: l.players, tee: l.tee || l.players?.default_tee };
+          // A sub's first 2 rounds on this nine count the ghost number for the team; after that, their own net
+          const nth = (ctx.nineRounds?.get(l.player_id) || 0) + 1, g = gfor(i);
+          const subNote = nth <= 2 ? `Sub${g.for ? " for " + nm(g.for) : ""} · round ${nth} of 2 on this nine, so the team counts ${g.net} net` : `Sub${g.for ? " for " + nm(g.for) : ""} · their own net counts for the team`;
+          return { p: l.players, tee: l.tee || l.players?.default_tee, sub: true, subNote };
+        });
       }
       return (team.team_players || []).map(tp => ({ p: tp.players, tee: tp.players?.default_tee }));
     }
@@ -1561,7 +1572,7 @@ the spirit, intent, and fairness of league competition.</p>
           if (!r.p) return;
           const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
-          players.push({ id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub });
+          players.push({ id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub, subNote: r.subNote });
         });
       });
       const mine = players.find(p => p.you) || players.find(p => p.group);
@@ -2202,8 +2213,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=52"></script>
-<script src="cup-app.js?v=52"></script>
+<script src="cup.js?v=53"></script>
+<script src="cup-app.js?v=53"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
