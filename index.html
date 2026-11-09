@@ -1219,6 +1219,7 @@ the spirit, intent, and fairness of league competition.</p>
   }
 
   function renderHole() {
+    applyInstant();
     const i = state.hole;
     $("holeNo").innerHTML = "<span>HOLE</span>" + holeLabel(i);
     $("fPar").textContent = COURSE.par[i];
@@ -1241,7 +1242,7 @@ the spirit, intent, and fairness of league competition.</p>
       row.className = "prow" + (pl.you ? " you" : "");
       row.innerHTML = `
         <div class="pname">${pl.name}${pl.you ? " (you)" : ""}
-          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · hcp ${pl.h}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small>${pl.subNote ? `<small class="subnote">${pl.subNote}</small>` : ""}</div>
+          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · ${pl.inst && !pl.instDone ? "new leaguer: hcp set after 9 holes" : `hcp ${pl.h}${pl.inst ? " (instant)" : ""}`}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small>${pl.subNote ? `<small class="subnote">${pl.subNote}</small>` : ""}</div>
         <div class="step" role="group" aria-label="Strokes for ${pl.name}">
           <button type="button" aria-label="One fewer">−</button>
           <output class="${cls(diff)}">${v}</output>
@@ -1303,7 +1304,14 @@ the spirit, intent, and fairness of league competition.</p>
     $("sc").innerHTML = html;
   }
 
+  // Instant handicap (new leaguer): tonight's 9-hole score sets the index, the way GolfSoftware did it
+  function applyInstant() {
+    PLAYERS.forEach(pl => { if (!pl.inst) return; const s = state.scores[pl.id] || [], done = s.length >= 9 && s.slice(0, 9).every(v => v != null), g = done ? s.slice(0, 9).reduce((a, b) => a + b, 0) : 0;
+      const idx = done ? Math.round(Math.round((g - pl.inst.rating) * 113 / pl.inst.slope * 10) / 10 * pl.inst.pct) / 100 : 0;
+      pl.h = done ? Math.round(idx * pl.inst.slope / 113 + (pl.inst.rating - pl.inst.par) + 1e-9) : 0; pl.instDone = done; });
+  }
   function standings() {
+    applyInstant();
     const rows = PLAYERS.map(pl => {
       const s = state.scores[pl.id];
       let thru = 0, gross = 0, parThru = 0, strokes = 0;
@@ -1627,7 +1635,9 @@ the spirit, intent, and fairness of league competition.</p>
           if (!r.p) return;
           const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
-          players.push({ id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub, subNote: r.subNote });
+          // New leaguer with no rounds: instant handicap from tonight's round, set once all 9 holes are in
+          const inst = ctx.hcp.has(r.p.id) ? null : { rating: +tee.rating, slope: tee.slope, par: tee.par, pct: ctx.season?.handicap_percent ?? 100 };
+          players.push({ inst, id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub, subNote: r.subNote });
         });
       });
       const mine = players.find(p => p.you) || players.find(p => p.group);

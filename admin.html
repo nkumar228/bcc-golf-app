@@ -750,11 +750,13 @@ tr.inc td { color: var(--bad); }
       while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
       sl.forEach((x, i) => {
         if (x.kind === "ghost" || !x.player_id) { const g = ghostFor(tid, sl, i); rows.push({ team_id: tid, slot: i + 1, kind: "ghost", player_id: null, net: g.net, ghost: true, for: g.pid, gkind: g.kind }); return; }
-        const tee = teeOf(x.tee), idx = wk.hcp.get(x.player_id) ?? 0;
+        const tee = teeOf(x.tee);
         const by = new Map(wk.scores.filter(s => s.player_id === x.player_id).map(s => [s.hole, s.strokes]));
         const done = wk.holes.every(h => by.has(h.hole)), gross = wk.holes.reduce((t, h) => t + (by.get(h.hole) || 0), 0);
+        // New leaguer with no rounds yet: an instant handicap from tonight's own round (how GolfSoftware did it)
+        const instant = !wk.hcp.has(x.player_id), idx = instant ? (done ? Math.round(Math.round((gross - +tee.rating) * 113 / tee.slope * 10) / 10 * (season.handicap_percent ?? 100)) / 100 : 0) : wk.hcp.get(x.player_id);
         const ch = courseHcp(idx, tee);
-        const row = { team_id: tid, slot: i + 1, kind: x.kind, player_id: x.player_id, tee: tee.name, gross, handicap_index: idx, course_handicap: ch, net: gross - ch, done, thru: by.size, rating: +tee.rating, slope: tee.slope };
+        const row = { team_id: tid, slot: i + 1, kind: x.kind, player_id: x.player_id, tee: tee.name, gross, handicap_index: idx, instant, course_handicap: ch, net: gross - ch, done, thru: by.size, rating: +tee.rating, slope: tee.slope };
         // A sub's first 2 rounds on this nine count for the team like a ghost; after that, their own net.
         const nth = (wk.nineRounds?.get(x.player_id) || 0) + 1;
         if (x.kind === "sub" && nth <= 2) { const g = ghostFor(tid, sl, i); Object.assign(row, { teamNet: g.net, subNth: nth, gkind: g.kind }); }
@@ -838,7 +840,7 @@ tr.inc td { color: var(--bad); }
     const order = [...rows].sort((a, b) => (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || (a.place ?? 999) - (b.place ?? 999));
     $("wkResults").innerHTML = `<thead><tr><th>Pos</th><th>Golfer</th><th>Team</th><th class="num">Gross</th><th class="num">Index</th><th class="num">Hcp</th><th class="num">Net</th><th class="num">Pts</th></tr></thead><tbody>` +
       order.map(r => `<tr${!r.ghost && !r.done ? ' class="inc"' : ""}><td>${r.ghost ? "" : r.place ? (r.tied ? "T" : "") + r.place : "–"}</td><td>${r.ghost ? `<span class="note">${r.gkind || "Ghost"}${r.for ? " for " + pLabel(r.for) : ""}</span>` : `<b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ` <span class="note">sub${r.subNth ? ` · round ${r.subNth} on this nine, team counts ${r.gkind} (${r.teamNet})` : " · Sub Score counts"}</span>` : ""}`}</td><td>${tLabel(r.team_id)}</td>
-        <td class="num">${r.ghost ? "" : r.done ? r.gross : r.thru + "/9"}</td><td class="num">${r.ghost ? "" : (+r.handicap_index).toFixed(2)}</td><td class="num">${r.ghost ? "" : r.course_handicap}</td><td class="num"><b>${r.done || r.ghost ? r.net : ""}</b></td><td class="num">${r.ghost ? "" : r.points}</td></tr>`).join("") + `</tbody>`;
+        <td class="num">${r.ghost ? "" : r.done ? r.gross : r.thru + "/9"}</td><td class="num">${r.ghost ? "" : r.instant && !r.done ? '<span class="note" title="New leaguer: handicap is set from tonight\'s round once all 9 holes are in">instant</span>' : (+r.handicap_index).toFixed(2) + (r.instant ? ' <span class="note" title="Instant handicap from tonight\'s round (new leaguer)">instant</span>' : "")}</td><td class="num">${r.ghost ? "" : r.course_handicap}</td><td class="num"><b>${r.done || r.ghost ? r.net : ""}</b></td><td class="num">${r.ghost ? "" : r.points}</td></tr>`).join("") + `</tbody>`;
     const tOrder = [...teamRows].sort((a, b) => b.total - a.total);
     $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th>Result</th><th class="num">Team pts</th></tr></thead><tbody>` +
       tOrder.map(t => `<tr><td><b>${tLabel(t.team_id)}</b></td><td class="note">${tLabel(t.opponent_id)}</td><td class="num">${t.team_net}</td><td>${t.match_points === season.team_win ? "Win" : t.match_points === season.team_tie ? "Tie" : "Loss"}</td><td class="num"><b>${t.total}</b></td></tr>`).join("") + `</tbody>`;
