@@ -260,6 +260,11 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .ffg span.u { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
 .ffg.hd span { background: none; border: 0; height: 14px; font-size: 11px; }
 .stand.ff tr.won td { background: var(--green-soft); }
+.teamnet { margin-top: 6px; padding: 0 24px 12px; }
+.tnrow { display: grid; grid-template-columns: 1fr auto 56px; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
+.tnrow b { font-family: var(--display); font-size: 20px; }
+.tnrow small { color: var(--muted); text-align: right; }
+.tnrow.lead b { color: var(--green); }
 .pace { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 .pace b { color: var(--ink, inherit); }
 .pace.slow b { color: var(--green); }
@@ -689,6 +694,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   <section class="card" aria-labelledby="gl">
     <div class="head" style="padding:12px 12px 4px"><p class="label" id="gl">Your group's card</p><span class="updated">○ birdie · □ bogey</span></div>
     <div class="gridwrap"><table class="sc" id="sc"></table></div>
+    <div class="teamnet" id="teamNet" hidden></div>
   </section>
 
   <section style="display:grid;gap:8px" aria-labelledby="lbl">
@@ -1321,6 +1327,33 @@ the spirit, intent, and fairness of league competition.</p>
     });
     groupGhosts.forEach(g => { html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${g.net ?? GHOST_NET}</td></tr>`; });
     $("sc").innerHTML = html;
+    renderTeamNet();
+  }
+
+  // Each team's combined net as the round goes (Nitin): starts at minus both handicaps, then each gross score is added
+  // as it's played. A ghost (or a sub in their first 2 rounds on this nine) counts its fixed net from the start.
+  // Once everyone's done it's the team total that decides the match.
+  function renderTeamNet() {
+    const el = $("teamNet"); if (!el) return;
+    applyInstant();
+    const by = new Map();
+    const T = n => { if (!by.has(n)) by.set(n, { team: n, toPar: 0, total: 0, start: 0, done: true, thru: [] }); return by.get(n); };
+    group.forEach(pl => {
+      const t = T(pl.team), s = state.scores[pl.id] || [], done = s.every(v => v != null);
+      if (pl.teamNet != null) { t.toPar += pl.teamNet - PAR_TOTAL; t.total += pl.teamNet; t.start += pl.teamNet; return; }
+      let tp = 0, n = 0; s.forEach((v, i) => { if (v != null) { n++; tp += v - COURSE.par[i] - strokesOn(pl.h, i, pl.rank); } });
+      t.toPar += tp; t.total += s.reduce((a, v) => a + (v || 0), 0) - pl.h; t.start -= pl.h; t.thru.push(n); if (!done) t.done = false;
+    });
+    groupGhosts.forEach(g => { const t = T(g.team), net = g.net ?? GHOST_NET; t.toPar += net - PAR_TOTAL; t.total += net; t.start += net; });
+    const teams = [...by.values()].filter(t => t.team != null);
+    if (!teams.length) { el.hidden = true; return; }
+    const allDone = teams.every(t => t.done), best = Math.min(...teams.map(t => t.total));
+    el.innerHTML = `<p class="label" style="margin:0 0 6px">Team net${allDone ? "" : " so far"}</p><p class="updated" style="margin:0 0 4px">Starts at minus both handicaps (a ghost's net counts from the start), then adds each score.</p>` + teams.map(t => {
+      const lead = allDone && teams.length > 1 && t.total === best && teams.filter(x => x.total === best).length === 1;
+      const thru = t.thru.length ? Math.min(...t.thru) : 9;
+      return `<div class="tnrow${lead ? " lead" : ""}"><span>${TEAMS[t.team] || "Team " + t.team}</span><b>${t.total}</b><small title="Started at ${t.start}">${allDone ? "final" : "thru " + thru}</small></div>`;
+    }).join("");
+    el.hidden = false;
   }
 
   // Instant handicap (new leaguer): tonight's 9-hole score sets the index, the way GolfSoftware did it
@@ -1630,7 +1663,7 @@ the spirit, intent, and fairness of league competition.</p>
           // A sub's first 2 rounds on this nine count the ghost number for the team; after that, their own net
           const nth = (ctx.nineRounds?.get(l.player_id) || 0) + 1, g = gfor(i);
           const subNote = nth <= 2 ? `Sub${g.for ? " for " + nm(g.for) : ""} · round ${nth} on this nine, so the team counts ${g.kind} (${g.net} net)` : `Sub${g.for ? " for " + nm(g.for) : ""} · Sub Score (their own net) counts for the team`;
-          return { p: l.players, tee: l.tee || l.players?.default_tee, sub: true, subNote };
+          return { p: l.players, tee: l.tee || l.players?.default_tee, sub: true, subNote, teamNet: nth <= 2 ? g.net : null };
         });
       }
       return (team.team_players || []).map(tp => ({ p: tp.players, tee: tp.players?.default_tee }));
@@ -1656,7 +1689,7 @@ the spirit, intent, and fairness of league competition.</p>
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
           // New leaguer with no rounds: instant handicap from tonight's round, set once all 9 holes are in
           const inst = ctx.hcp.has(r.p.id) ? null : { rating: +tee.rating, slope: tee.slope, par: tee.par, pct: ctx.season?.handicap_percent ?? 100 };
-          players.push({ inst, id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub, subNote: r.subNote });
+          players.push({ inst, teamNet: r.teamNet ?? null, id: r.p.id, name: `${r.p.first_name} ${(r.p.last_name || "?")[0]}.`, team: t.number, teamId: t.id, tee: tee.name, h, rank: (si => si.map(v => si.filter(x => x < v).length + 1))(hs.map(x => x.stroke_index)), group: !!match && m.id === match.id, you: r.p.id === meId, sub: r.sub, subNote: r.subNote });
         });
       });
       const mine = players.find(p => p.you) || players.find(p => p.group);
