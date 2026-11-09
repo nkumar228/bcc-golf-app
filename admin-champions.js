@@ -15,6 +15,14 @@
     img.onerror = () => rej(new Error("Couldn't read that photo")); img.src = url;
   });
 
+  // Shared with the Cup history: shrink, upload to the "champions" bucket, return the public URL
+  A.uploadPhoto = async (file, name) => {
+    const blob = await shrink(file), path = `${name}-${Date.now()}.jpg`;
+    const { error } = await sb.storage.from("champions").upload(path, blob, { contentType: "image/jpeg" });
+    if (error) throw error;
+    return sb.storage.from("champions").getPublicUrl(path).data.publicUrl;
+  };
+
   async function loadChamps() {
     const { data } = await sb.from("champions").select("*").order("year", { ascending: false });
     const rows = data || [];

@@ -359,14 +359,28 @@
 
   // ---------- history ----------
   async function loadHistory() {
-    const { data } = await sb.from("cup_history").select("*").order("year", { ascending: false });
-    const rows = data || [];
-    $("histTable").innerHTML = `<thead><tr><th>Year</th><th>Side</th><th class="num">Pts</th><th>Side</th><th class="num">Pts</th><th>Winner</th><th>Notes</th><th></th></tr></thead><tbody>` +
+    const [{ data }, { data: ph }, { data: appCups }] = await Promise.all([sb.from("cup_history").select("*").order("year", { ascending: false }), sb.from("cup_photos").select("year,photo"), sb.from("cups").select("year,name").order("year", { ascending: false })]);
+    const rows = data || [], photo = new Map((ph || []).map(x => [x.year, x.photo]));
+    const pcell = y => { const u = photo.get(y); return `<td data-py="${y}"><div class="row" style="gap:6px;flex-wrap:nowrap">${u ? `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" style="width:64px;height:48px;object-fit:cover;border-radius:6px;display:block"></a>` : '<span class="note">none</span>'}
+      <label class="btn secondary" style="padding:5px 9px;font-size:13px;white-space:nowrap">${u ? "Replace" : "Add"}<input type="file" accept="image/*" data-pup hidden></label>${u ? '<button class="btn secondary" type="button" data-prm style="padding:5px 9px;font-size:13px">Remove</button>' : ""}</div></td>`; };
+    const appOnly = (appCups || []).filter(c => !rows.some(r => r.year === c.year));
+    $("histTable").innerHTML = `<thead><tr><th>Year</th><th>Side</th><th class="num">Pts</th><th>Side</th><th class="num">Pts</th><th>Winner</th><th>Notes</th><th>League photo</th><th></th></tr></thead><tbody>` +
+      appOnly.map(c => `<tr><td>${c.year}</td><td colspan="6" class="note">${esc(c.name || "")}, played in the app (results fill in by themselves)</td>${pcell(c.year)}<td></td></tr>`).join("") +
       (rows.map(h => `<tr data-id="${h.id}"><td><input class="w-num" type="number" data-h="year" value="${h.year}"></td>
         <td><input data-h="side1_name" value="${esc(h.side1_name)}" style="width:90px"></td><td><input class="w-num" type="number" step="0.5" data-h="side1_points" value="${h.side1_points ?? ""}"></td>
         <td><input data-h="side2_name" value="${esc(h.side2_name)}" style="width:90px"></td><td><input class="w-num" type="number" step="0.5" data-h="side2_points" value="${h.side2_points ?? ""}"></td>
         <td><input data-h="winner" value="${esc(h.winner || "")}" placeholder="by points" style="width:100px"></td><td><input data-h="notes" value="${esc(h.notes || "")}" style="width:220px"></td>
-        <td><button class="btn danger" type="button" data-hdel>Delete</button></td></tr>`).join("") || '<tr><td colspan="8" class="note">No past years yet.</td></tr>') + "</tbody>";
+        ${pcell(h.year)}<td><button class="btn danger" type="button" data-hdel>Delete</button></td></tr>`).join("") || (appOnly.length ? "" : '<tr><td colspan="9" class="note">No past years yet.</td></tr>')) + "</tbody>";
+    $("histTable").querySelectorAll("[data-pup]").forEach(el => el.onchange = async () => {
+      const f = el.files[0], y = +el.closest("[data-py]").dataset.py; if (!f) return;
+      try { toast("Uploading…"); const url = await A.uploadPhoto(f, `cup-${y}`);
+        const { error } = await sb.from("cup_photos").upsert({ year: y, photo: url }); if (check(error, "Photo saved")) loadHistory();
+      } catch (e) { toast("Couldn't upload: " + (e.message || e), true); }
+    });
+    $("histTable").querySelectorAll("[data-prm]").forEach(b => b.onclick = async () => {
+      if (!confirm("Take this photo off the Cup history?")) return;
+      const { error } = await sb.from("cup_photos").delete().eq("year", +b.closest("[data-py]").dataset.py); if (check(error, "Photo removed")) loadHistory();
+    });
     $("histTable").querySelectorAll("[data-h]").forEach(el => el.onchange = async () => {
       const k = el.dataset.h, v = ["year", "side1_points", "side2_points"].includes(k) ? (el.value === "" ? null : +el.value) : (el.value.trim() || null);
       const { error } = await sb.from("cup_history").update({ [k]: v }).eq("id", +el.closest("tr").dataset.id); check(error);

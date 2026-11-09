@@ -45,7 +45,8 @@
     const body = $("histBody"), s = ses();
     if (!s || !s.real || !sb()) { body.innerHTML = '<div class="card pad"><p class="updated" style="margin:0">Sign in to see the Cup history.</p></div>'; return; }
     body.innerHTML = '<p class="updated">Loading…</p>';
-    const [{ data: hist }, { data: cups }] = await Promise.all([sb().from("cup_history").select("*").order("year", { ascending: false }), sb().from("cups").select("*").order("year", { ascending: false })]);
+    const [{ data: hist }, { data: cups }, { data: photos }] = await Promise.all([sb().from("cup_history").select("*").order("year", { ascending: false }), sb().from("cups").select("*").order("year", { ascending: false }), sb().from("cup_photos").select("year,photo")]);
+    const photoOf = new Map((photos || []).map(x => [x.year, x.photo]));
     const rows = (hist || []).map(h => ({ year: h.year, a: h.side1_name, ap: h.side1_points, b: h.side2_name, bp: h.side2_points, winner: h.winner, notes: h.notes }));
     // Cups played in the app count once every round is final (unless that year was entered by hand)
     for (const c of cups || []) {
@@ -68,7 +69,7 @@
     if (!rows.length) { body.innerHTML = '<div class="card pad"><p class="updated" style="margin:0">No Cup results yet. The commissioner can add past years on the admin site.</p></div>'; return; }
     body.innerHTML = `<div class="card pad"><p class="label">All-time record</p><div class="cup-board">${Object.entries(tally).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([n, w]) => `<div class="cside" style="--c:${color(n)}"><span>${esc(n)}</span><b class="num">${w}</b><small>Cup${w === 1 ? "" : "s"} won</small></div>`).join("")}</div>
       <p class="updated" style="margin:8px 0 0">${rows.length} Cup${rows.length === 1 ? "" : "s"} played${ties ? ` · ${ties} tied` : ""}.</p></div>
-      <div class="card pad"><p class="label">Year by year</p><div class="cmatches">${rows.map(r => { const w = win(r); return `<div class="cm"><span class="${w === r.a ? "lead" : ""}" style="--c:${color(r.a)}">${esc(r.a)} ${pts(r.ap)}</span><em><b>${r.year}</b>${r.notes ? "<br>" + esc(r.notes) : ""}</em><span class="r ${w === r.b ? "lead" : ""}" style="--c:${color(r.b)}">${pts(r.bp)} ${esc(r.b)}</span></div>`; }).join("")}</div></div>`;
+      <div class="card pad"><p class="label">Year by year</p><div class="cmatches">${rows.map(r => { const w = win(r); return `<div class="cm"><span class="${w === r.a ? "lead" : ""}" style="--c:${color(r.a)}">${esc(r.a)} ${pts(r.ap)}</span><em><b>${r.year}</b>${r.notes ? "<br>" + esc(r.notes) : ""}</em><span class="r ${w === r.b ? "lead" : ""}" style="--c:${color(r.b)}">${pts(r.bp)} ${esc(r.b)}</span></div>${photoOf.get(r.year) ? `<a class="cupimg" href="${esc(photoOf.get(r.year))}" target="_blank" rel="noopener"><img src="${esc(photoOf.get(r.year))}" alt="${r.year} Queen City Cup" loading="lazy"></a>` : ""}`; }).join("")}</div></div>`;
   }
   function off() {
     D = null; document.body.classList.remove("cup-on"); document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#000000");
