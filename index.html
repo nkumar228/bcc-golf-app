@@ -909,8 +909,12 @@ unavailable.</p>
 players.</p>
 <h4>Ghost Scores</h4>
 <p>When no substitute is available, a ghost score shall be used.</p>
-<p>The ghost score shall equal the league average net score for the week
-of play.</p>
+<p>The ghost score shall equal the absent player’s average net score over
+their last three (3) rounds on the nine being played, including rounds
+from previous seasons, rounded to the nearest whole number.</p>
+<p>Until the absent player has three (3) rounds on that nine, the ghost
+score shall be 36 net.</p>
+<p>The ghost score is shown on the tee sheet before play.</p>
 <p>Ghost scores shall count only for team competition.</p>
 </div></details>
 <details class="art"><summary>VIII – Local Rules</summary><div class="artb">
@@ -1212,8 +1216,8 @@ the spirit, intent, and fairness of league competition.</p>
       const gr = document.createElement("div");
       gr.className = "prow ghostrow";
       gr.innerHTML = `
-        <div class="pname">Ghost<small>${TEAMS[g.team] || ""} · fills the open spot</small></div>
-        <div class="locked" aria-label="Ghost score locked at ${GHOST_NET} net">${LOCK}<span class="num">${GHOST_NET}</span><small>net</small></div>`;
+        <div class="pname">Ghost<small>${TEAMS[g.team] || ""} · ${g.forName ? `for ${g.forName}, avg of last 3 here` : "fills the open spot"}</small></div>
+        <div class="locked" aria-label="Ghost score locked at ${g.net ?? GHOST_NET} net">${LOCK}<span class="num">${g.net ?? GHOST_NET}</span><small>net</small></div>`;
       rows.appendChild(gr);
     });
     $("saveBtn").textContent = state.saved.has(i) ? `Update hole ${holeLabel(i)}` : `Save hole ${holeLabel(i)}`;
@@ -1236,7 +1240,7 @@ the spirit, intent, and fairness of league competition.</p>
       const done = s.every(v => v != null);
       html += `<tr><td>${pl.name.split(",")[0]} <small class="teetag">${pl.tee || "Blue"}</small></td>` + s.map((v, i) => `<td>${mark(v, COURSE.par[i])}</td>`).join("") + `<td class="tot">${tot || ""}</td><td class="tot">${done ? tot - pl.h : ""}</td></tr>`;
     });
-    groupGhosts.forEach(() => { html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${GHOST_NET}</td></tr>`; });
+    groupGhosts.forEach(g => { html += `<tr class="ghostline"><td>Ghost</td><td colspan="10" class="lockcell">${LOCK} Locked score</td><td class="tot">${g.net ?? GHOST_NET}</td></tr>`; });
     $("sc").innerHTML = html;
   }
 
@@ -1251,7 +1255,10 @@ the spirit, intent, and fairness of league competition.</p>
     }).filter(r => r.thru > 0);
     // Rank by net to par; ghosts sort after real golfers on the same score
     rows.sort((a, b) => a.netToPar - b.netToPar || (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || b.thru - a.thru);
-    // Positions and points: linear scale, tied golfers split the points of the places they share
+    // Positions and points among regulars only: subs show their score but take no place or points.
+    // Tied golfers split the points of the places they share.
+    const all = rows; rows.filter(r => r.pl.sub).forEach(r => { r.pos = "–"; r.tied = false; r.pts = 0; });
+    { const rows = all.filter(r => !r.pl.sub);
     let i = 0;
     while (i < rows.length) {
       let j = i;
@@ -1261,7 +1268,7 @@ the spirit, intent, and fairness of league competition.</p>
       const pts = sum / (j - i + 1);
       for (let k = i; k <= j; k++) { rows[k].pos = i + 1; rows[k].tied = j > i; rows[k].pts = pts; }
       i = j + 1;
-    }
+    } }
     return rows;
   }
 
@@ -1512,17 +1519,24 @@ the spirit, intent, and fairness of league competition.</p>
         sb.from("tees").select("id,name,rating,slope,par,tee_holes(hole,par,yards,stroke_index)").eq("course_id", ev.course_id),
         sb.from("teams").select("id,number,name,team_players(player_id,players(id,first_name,last_name,default_tee))").eq("season_id", season.id).order("number"),
         sb.from("matchups").select("*").eq("event_id", ev.id).order("tee_time").order("id"),
-        sb.from("lineups").select("team_id,player_id,kind,tee,players!lineups_player_id_fkey(id,first_name,last_name,default_tee)").eq("event_id", ev.id),
+        sb.from("lineups").select("id,team_id,player_id,kind,tee,players!lineups_player_id_fkey(id,first_name,last_name,default_tee)").eq("event_id", ev.id).order("id"),
         sb.from("player_handicaps").select("player_id,handicap_index")
       ]);
-      ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])) };
+      const { data: gn } = await sb.rpc("ghost_nets", { p_course: ev.course_id, p_before: ev.play_date, p_default: season.ghost_net ?? 36 });
+      ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])), ghostNet: new Map((gn || []).map(g => [g.player_id, g.net])) };
       await refreshScores(false);
     }
 
     function rosterOf(team) {
       if (!team || !team.id) return [];
       const lu = ctx.lineups.filter(l => l.team_id === team.id);
-      if (lu.length) return lu.map(l => l.kind === "ghost" ? { ghost: true } : { p: l.players, tee: l.tee || l.players?.default_tee, sub: l.kind === "sub" });
+      if (lu.length) {
+        // A ghost stands in for a missing regular: the one in its slot, or the only one missing
+        const regs = (team.team_players || []).map(tp => tp.players).filter(Boolean), absent = regs.filter(p => !lu.some(l => l.player_id === p.id));
+        return lu.map((l, i) => { if (l.kind !== "ghost") return { p: l.players, tee: l.tee || l.players?.default_tee, sub: l.kind === "sub" };
+          const f = absent.length === 1 ? absent[0] : absent.find(p => p.id === regs[i]?.id) || absent[0];
+          return { ghost: true, for: f, net: (f && ctx.ghostNet?.get(f.id)) ?? ctx.season.ghost_net ?? 36 }; });
+      }
       return (team.team_players || []).map(tp => ({ p: tp.players, tee: tp.players?.default_tee }));
     }
 
@@ -1540,7 +1554,7 @@ the spirit, intent, and fairness of league competition.</p>
       teams.forEach(t => {
         const m = inMatch.get(t.id); if (!m) return;
         rosterOf(t).forEach(r => {
-          if (r.ghost) { (ghostsByTeam[t.id] = ghostsByTeam[t.id] || []).push({ team: t.number }); return; }
+          if (r.ghost) { (ghostsByTeam[t.id] = ghostsByTeam[t.id] || []).push({ team: t.number, net: r.net, forName: r.for ? `${r.for.first_name} ${(r.for.last_name || "?")[0]}.` : "" }); return; }
           if (!r.p) return;
           const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
@@ -1625,7 +1639,7 @@ the spirit, intent, and fairness of league competition.</p>
       if (v.startsWith("ringer")) { ringKind = v === "ringer-net" ? "net" : "gross"; showR("ring"); $("wkInfo").textContent = `Each player's best ${ringKind} score on every hole, ${rCache.finals.length} week${rCache.finals.length === 1 ? "" : "s"} so far`; renderRinger(); return; }
       if (v === "up") {
         showR("up"); $("wkInfo").textContent = `${fmtDate(ev.play_date)} · ${ctx.course?.name || ""}${matchups[0] ? " · first tee " + fmtTime(matchups[0].tee_time) : ""}`;
-        $("wkUpList").innerHTML = matchups.map(m => { const side = tid => { const t = teamById.get(tid); return `<div class="tm${tid === m.team_b ? " r" : ""}"><b>${esc(t?.name || "")}</b><div class="pl">${rosterOf(t).map(r => `<span>${r.ghost ? "Ghost" : esc(r.p?.last_name || "")}</span>`).join("")}</div></div>`; };
+        $("wkUpList").innerHTML = matchups.map(m => { const side = tid => { const t = teamById.get(tid); return `<div class="tm${tid === m.team_b ? " r" : ""}"><b>${esc(t?.name || "")}</b><div class="pl">${rosterOf(t).map(r => `<span>${r.ghost ? `Ghost ${r.net}` : esc(r.p?.last_name || "")}</span>`).join("")}</div></div>`; };
           return `<div class="card trow2"><div class="tt num">${fmtTime(m.tee_time).replace(" PM", "")}<small>PM</small></div>${side(m.team_a)}${side(m.team_b)}</div>`; }).join("") || '<p class="updated">No tee times yet.</p>';
         return;
       }
@@ -2185,8 +2199,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=50"></script>
-<script src="cup-app.js?v=50"></script>
+<script src="cup.js?v=51"></script>
+<script src="cup-app.js?v=51"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });

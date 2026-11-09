@@ -199,7 +199,7 @@ tr.inc td { color: var(--bad); }
         <select id="wkEvent"></select>
         <span id="wkStatus"></span>
       </div>
-      <p class="note">Each team plays its two regulars unless you change it here. Pick a sub from the list, or Ghost (locked at the season's ghost net score). Scores can be fixed in the grid; finalizing saves the points and adds each round to the player's handicap.</p>
+      <p class="note">Each team plays its two regulars unless you change it here. Pick a sub from the list, or Ghost. A ghost scores the missing player's average net over their last 3 rounds on this nine, including last season (the season's ghost net until they have 3). Subs and ghosts count for the team only: no place or points. Scores can be fixed in the grid; finalizing saves the points and adds each round to the player's handicap.</p>
       <div id="wkLineups"></div>
     </section>
 
@@ -666,7 +666,7 @@ tr.inc td { color: var(--bad); }
     if (!season) { $("seasonForm").innerHTML = '<p class="note">No current season.</p>'; return; }
     const f = (k, label, help) => `<label style="display:grid;gap:4px"><span style="font-weight:600">${label}</span><input data-k="${k}" value="${esc(Array.isArray(season[k]) ? season[k].join(", ") : season[k])}"><span class="note" style="margin:0">${help}</span></label>`;
     $("seasonForm").innerHTML =
-      f("ghost_net", "Ghost score (net)", "Locked net score used when a team has no sub.") +
+      f("ghost_net", "Ghost score (net)", "Used for a missing player until they have 3 rounds on that nine; after that the ghost is their average net over the last 3.") +
       f("points_table", "Weekly points by place", "1st place first, separated by commas.") +
       f("team_win", "Team win", "Team points when the team's combined net beats the team it played.") +
       f("team_tie", "Team tie", "Team points for a tie.") +
@@ -703,8 +703,9 @@ tr.inc td { color: var(--bad); }
       sb.from("tees").select("id,name,rating,slope,par,tee_holes(hole,par)").eq("course_id", ev.course_id),
       sb.from("player_handicaps").select("player_id,handicap_index")
     ]);
+    const { data: gn } = await sb.rpc("ghost_nets", { p_course: ev.course_id, p_before: ev.play_date, p_default: season.ghost_net ?? 36 });
     const tees = th || [], holes = [...(tees[0]?.tee_holes || [])].sort((a, b) => a.hole - b.hole);
-    wk = { ev, tees, holes, matchups: ms || [], lineups: lu || [], scores: sc || [], hcp: new Map((hc || []).map(h => [h.player_id, +h.handicap_index])) };
+    wk = { ev, tees, holes, matchups: ms || [], lineups: lu || [], scores: sc || [], hcp: new Map((hc || []).map(h => [h.player_id, +h.handicap_index])), ghostNet: new Map((gn || []).map(g => [g.player_id, g.net])) };
     renderWeek();
   }
   // The slots a team plays this week: saved lineup rows, or its two regulars.
@@ -713,6 +714,13 @@ tr.inc td { color: var(--bad); }
     if (lu.length) return lu.map(l => ({ kind: l.kind, player_id: l.player_id, tee: l.tee }));
     return members.filter(m => m.team_id === teamId).map(m => { const p = players.find(x => x.id === m.player_id); return { kind: "regular", player_id: m.player_id, tee: p?.default_tee || "Blue" }; });
   }
+  // A ghost stands in for a missing regular (the one in its slot, or the only one missing) and scores
+  // that player's average net over their last 3 rounds on this nine; the season's ghost net until they have 3.
+  function ghostFor(tid, sl, i) {
+    const regs = members.filter(m => m.team_id === tid).map(m => m.player_id), absent = regs.filter(id => !sl.some(x => x.player_id === id));
+    const pid = absent.length === 1 ? absent[0] : absent.includes(regs[i]) ? regs[i] : absent[0];
+    return { pid: pid ?? null, net: (pid != null ? wk.ghostNet?.get(pid) : null) ?? season.ghost_net };
+  }
   const teeOf = name => wk.tees.find(t => t.name === name) || wk.tees.find(t => t.name === "Blue") || wk.tees[0];
   function compute() {
     const rows = [];
@@ -720,7 +728,7 @@ tr.inc td { color: var(--bad); }
       const sl = slotsOf(tid);
       while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
       sl.forEach((x, i) => {
-        if (x.kind === "ghost" || !x.player_id) { rows.push({ team_id: tid, slot: i + 1, kind: "ghost", player_id: null, net: season.ghost_net, ghost: true }); return; }
+        if (x.kind === "ghost" || !x.player_id) { const g = ghostFor(tid, sl, i); rows.push({ team_id: tid, slot: i + 1, kind: "ghost", player_id: null, net: g.net, ghost: true, for: g.pid }); return; }
         const tee = teeOf(x.tee), idx = wk.hcp.get(x.player_id) ?? 0;
         const by = new Map(wk.scores.filter(s => s.player_id === x.player_id).map(s => [s.hole, s.strokes]));
         const done = wk.holes.every(h => by.has(h.hole)), gross = wk.holes.reduce((t, h) => t + (by.get(h.hole) || 0), 0);
@@ -728,8 +736,8 @@ tr.inc td { color: var(--bad); }
         rows.push({ team_id: tid, slot: i + 1, kind: x.kind, player_id: x.player_id, tee: tee.name, gross, handicap_index: idx, course_handicap: ch, net: gross - ch, done, thru: by.size, rating: +tee.rating, slope: tee.slope });
       });
     }));
-    // Places and points among real golfers; tied golfers split the points of the places they share. Ghosts take no place.
-    const real = rows.filter(r => !r.ghost && r.done).sort((a, b) => a.net - b.net);
+    // Places and points among regulars; tied golfers split the points of the places they share. Ghosts and subs take no place.
+    const real = rows.filter(r => !r.ghost && r.kind !== "sub" && r.done).sort((a, b) => a.net - b.net);
     for (let i = 0; i < real.length;) {
       let j = i; while (j + 1 < real.length && real[j + 1].net === real[i].net) j++;
       let sum = 0; for (let k = i; k <= j; k++) sum += season.points_table[k] ?? 0;
@@ -756,14 +764,14 @@ tr.inc td { color: var(--bad); }
     $("wkStatus").innerHTML = final ? '<span class="pill">Final</span>' : ev.status === "rained_out" ? '<span class="pill warn">Cancelled</span>' : '<span class="pill warn">Open</span>';
     if (!wk.matchups.length) { $("wkLineups").innerHTML = '<p class="note">No tee times for this week yet. Set them on the Tee sheet tab.</p>'; $("wkScores").innerHTML = ""; $("wkResults").innerHTML = ""; $("wkTeams").innerHTML = ""; return; }
     const playing = new Set(wk.matchups.flatMap(m => [m.team_a, m.team_b]).flatMap(t => slotsOf(t).map(x => x.player_id)).filter(Boolean));
-    const opts = (sel, tid) => `<option value="ghost"${!sel ? " selected" : ""}>Ghost (${season.ghost_net} net)</option>` +
+    const opts = (sel, tid, gnet) => `<option value="ghost"${!sel ? " selected" : ""}>Ghost (${gnet} net)</option>` +
       `<optgroup label="Team">${members.filter(m => m.team_id === tid).map(m => `<option value="${m.player_id}"${m.player_id === sel ? " selected" : ""}>${pLabel(m.player_id)}</option>`).join("")}</optgroup>` +
       `<optgroup label="Subs">${players.filter(p => (p.active && !teamOf(p.id)) || (p.id === sel && !members.some(m => m.team_id === tid && m.player_id === p.id))).sort((a, b) => pname(a).localeCompare(pname(b))).map(p => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}${playing.has(p.id) && p.id !== sel ? " · playing" : ""}</option>`).join("")}</optgroup>`;
     const teeSel = (v) => `<select data-tee>${["Blue", "White", "Gold"].map(x => `<option${x === v ? " selected" : ""}>${x}</option>`).join("")}</select>`;
     $("wkLineups").innerHTML = `<div class="lu">` + wk.matchups.map(m => [m.team_a, m.team_b].map(tid => {
       const sl = slotsOf(tid); while (sl.length < 2) sl.push({ kind: "ghost", player_id: null, tee: "Blue" });
       return `<div class="box" data-team="${tid}"><h4>${tLabel(tid)} <span class="note" style="font-weight:400">· ${fmtTime(m.tee_time.slice(0, 5))}</span></h4>` +
-        sl.map((x, i) => `<div class="slot" data-slot="${i}"><select data-p${final ? " disabled" : ""}>${opts(x.player_id, tid)}</select>${teeSel(x.tee || "Blue")}</div>`).join("") + `</div>`;
+        sl.map((x, i) => `<div class="slot" data-slot="${i}"><select data-p${final ? " disabled" : ""}>${opts(x.player_id, tid, ghostFor(tid, x.player_id ? sl.map((y, k) => k === i ? { player_id: null } : y) : sl, i).net)}</select>${teeSel(x.tee || "Blue")}</div>`).join("") + `</div>`;
     }).join("")).join("") + `</div>`;
     $("wkLineups").querySelectorAll(".box").forEach(box => box.querySelectorAll("select").forEach(el => el.onchange = () => saveLineup(+box.dataset.team, box)));
     if (final) $("wkLineups").querySelectorAll("select").forEach(x => x.disabled = true);
@@ -801,10 +809,10 @@ tr.inc td { color: var(--bad); }
   }
   function renderResults() {
     const { rows, teamRows, incomplete } = compute(), final = wk.ev.status === "final";
-    $("wkRule").textContent = `Places use net score among real golfers; ties split the points. Ghosts count ${season.ghost_net} net for their team but take no place. Teams: combined net against the team they played; win ${season.team_win}, tie ${season.team_tie}, loss 0. Golfer points don't go to the team.`;
+    $("wkRule").textContent = `Places use net score among regulars; ties split the points. Subs and ghosts count for their team but take no place or points. A ghost scores the missing player's average net over their last 3 rounds on this nine (${season.ghost_net} until they have 3). Teams: combined net against the team they played; win ${season.team_win}, tie ${season.team_tie}, loss 0. Golfer points don't go to the team.`;
     const order = [...rows].sort((a, b) => (a.ghost ? 1 : 0) - (b.ghost ? 1 : 0) || (a.place ?? 999) - (b.place ?? 999));
     $("wkResults").innerHTML = `<thead><tr><th>Pos</th><th>Golfer</th><th>Team</th><th class="num">Gross</th><th class="num">Index</th><th class="num">Hcp</th><th class="num">Net</th><th class="num">Pts</th></tr></thead><tbody>` +
-      order.map(r => `<tr${!r.ghost && !r.done ? ' class="inc"' : ""}><td>${r.ghost ? "" : r.place ? (r.tied ? "T" : "") + r.place : "–"}</td><td>${r.ghost ? '<span class="note">Ghost</span>' : `<b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ' <span class="note">sub</span>' : ""}`}</td><td>${tLabel(r.team_id)}</td>
+      order.map(r => `<tr${!r.ghost && !r.done ? ' class="inc"' : ""}><td>${r.ghost ? "" : r.place ? (r.tied ? "T" : "") + r.place : "–"}</td><td>${r.ghost ? `<span class="note">Ghost${r.for ? " for " + pLabel(r.for) : ""}</span>` : `<b>${pLabel(r.player_id)}</b>${r.kind === "sub" ? ' <span class="note">sub</span>' : ""}`}</td><td>${tLabel(r.team_id)}</td>
         <td class="num">${r.ghost ? "" : r.done ? r.gross : r.thru + "/9"}</td><td class="num">${r.ghost ? "" : (+r.handicap_index).toFixed(2)}</td><td class="num">${r.ghost ? "" : r.course_handicap}</td><td class="num"><b>${r.done || r.ghost ? r.net : ""}</b></td><td class="num">${r.ghost ? "" : r.points}</td></tr>`).join("") + `</tbody>`;
     const tOrder = [...teamRows].sort((a, b) => b.total - a.total);
     $("wkTeams").innerHTML = `<thead><tr><th>Team</th><th>Played</th><th class="num">Team net</th><th>Result</th><th class="num">Team pts</th></tr></thead><tbody>` +
@@ -959,7 +967,7 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=50"></script>
-<script src="admin-cup.js?v=50"></script>
+<script src="cup.js?v=51"></script>
+<script src="admin-cup.js?v=51"></script>
 </body>
 </html>
