@@ -2,6 +2,7 @@
 //   {action:"key"}                  -> the public key phones subscribe with (keys are made here on first use)
 //   {action:"test"}                 -> a test alert to the caller's own phones
 //   {action:"cup_turn", round_id}   -> tells the captain(s) whose pick it is now
+//   {action:"full_flock"}           -> tells the admins who just earned the Full Flock Award (admins only)
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
@@ -90,6 +91,19 @@ Deno.serve(async (req) => {
         n += await send([uid], { title: `${r.name} matchups are out`, body: `${cup?.name ?? "Queen City Cup"}. ${msg}`, url: APP + "#home", tag: `cup-rev-${rid}` });
       }
       return json({ sent: n });
+    }
+
+    // A finalized week completed someone's Full Flock (better than par on all 18 holes): tell the admins
+    if (body.action === "full_flock") {
+      const { data: isAdm } = await caller.rpc("is_admin");
+      if (!isAdm) return json({ error: "Admins only" }, 403);
+      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: aw } = await admin.from("full_flock_awards").select("achieved_year,players(first_name,last_name)").gte("created_at", since);
+      if (!aw?.length) return json({ sent: 0 });
+      const names = aw.map((a) => { const p = a.players as unknown as { first_name: string; last_name: string }; return `${p.first_name} ${p.last_name}`; });
+      const { data: admins } = await admin.from("players").select("user_id").eq("is_admin", true).not("user_id", "is", null);
+      const ids = (admins ?? []).map((a) => a.user_id as string);
+      return json({ sent: await send(ids, { title: "Full Flock Award!", body: `${names.join(" and ")} just beat par on all 18 holes. See the Full Flock page in the app.`, url: APP + "#full-flock", tag: `flock-${Date.now()}` }) });
     }
 
     if (body.action === "cup_turn") {

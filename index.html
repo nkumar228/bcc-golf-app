@@ -250,6 +250,18 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .ghostrow { background: var(--bg); }
 .cmatches .cupimg { display: block; margin: 2px 0 10px; }
 .cmatches .cupimg img { width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; background: var(--bg); display: block; }
+.stand.ff td, .stand.ff th { padding: 8px 6px; vertical-align: middle; }
+.stand.ff td.l { padding-left: 12px; font-size: 14px; white-space: nowrap; }
+.stand.ff td.n { font-family: var(--display); font-size: 18px; font-weight: 700; text-align: right; padding-right: 12px; white-space: nowrap; }
+.stand.ff td.n small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.ffg { display: grid; grid-template-columns: repeat(9, 20px); gap: 2px; }
+.ffg + .ffg { margin-top: 2px; }
+.ffg span { height: 20px; border-radius: 5px; display: grid; place-items: center; font-family: var(--display); font-size: 13px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+.ffg span.u { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
+.ffg.hd span { background: none; border: 0; height: 14px; font-size: 11px; }
+.stand.ff tr.won td { background: var(--green-soft); }
+.ffwin { display: flex; flex-wrap: wrap; gap: 8px; }
+.ffwin span { background: var(--green-soft); color: var(--green); font-weight: 700; border-radius: 999px; padding: 4px 12px; font-size: 14px; }
 .champ { padding: 14px 16px; display: grid; gap: 12px; }
 .champ .yr { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--green); }
 .champ .who { display: grid; gap: 6px; }
@@ -518,6 +530,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <a href="#captain" class="captain-only">Captain page</a>
     <a href="#rounds" class="cup-only">League rounds</a>
     <a href="#ringers">Ringer boards</a>
+    <a href="#full-flock">Full Flock Award</a>
     <a href="#skins-games">Skins winners</a>
     <a href="#handicap">How my handicap is calculated</a>
     <a href="#champions">Hall of Champions</a>
@@ -728,6 +741,15 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   <section class="view" id="v-cup-format" aria-label="How the Cup format works" hidden>
     <div class="head"><p class="label">How it's played</p></div>
     <div id="fmtBody" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="view" id="v-full-flock" aria-label="Full Flock Award" hidden>
+    <div class="card pad">
+      <p class="label">Full Flock Award</p>
+      <p style="margin:6px 0 0">Better than par on all 18 holes at Avon Fields, over a lifetime in the league. Each square is a player's best score on that hole; filled squares beat par. It updates every time a week is final.</p>
+      <div id="ffWinners" style="margin-top:10px"></div>
+    </div>
+    <div class="card" style="overflow-x:auto"><table class="stand ff" id="ffTable"><tbody><tr><td class="updated" style="padding:14px">Loading…</td></tr></tbody></table></div>
   </section>
 
   <section class="view" id="v-champions" aria-label="Hall of Champions" hidden>
@@ -1511,7 +1533,7 @@ the spirit, intent, and fairness of league competition.</p>
   loadMember();
 
   // Router: #home, #score, #gps
-  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), champions: $("v-champions"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), ringers: $("v-ringers"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
+  const views = { "cup-format": $("v-cup-format"), "cup-history": $("v-cup-history"), champions: $("v-champions"), "full-flock": $("v-full-flock"), cup: $("v-cup"), captain: $("v-captain"), handicap: $("v-handicap"), home: $("v-home"), score: $("v-score"), rounds: $("v-rounds"), ringers: $("v-ringers"), gps: $("v-gps"), rules: $("v-rules"), "skins-games": $("v-skins-games") };
   const menu = $("menu"), mb = $("menuBtn");
   const setMenu = open => { menu.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
   mb.onclick = e => { e.stopPropagation(); setMenu(menu.hidden); };
@@ -1746,6 +1768,29 @@ the spirit, intent, and fairness of league competition.</p>
         (rows.length ? rows.map(o => `<tr${o.id === session.playerId ? ' class="mine"' : ""}><td class="l"><b>${esc(o.name)}</b></td>${holes.map(h => `<td>${mk(o.h[h], h)}</td>`).join("")}<td class="tot">${o.tot}</td></tr>`).join("") : `<tr><td class="l" colspan="11">No one has played the ${ringNine} nine in a final week yet.</td></tr>`) + "</tbody>";
       $("ringNote").textContent = ringKind === "net" ? "Net score per hole after handicap strokes." : "○ birdie · □ bogey.";
     }
+
+    // Full Flock Award: lifetime best per hole; filled squares beat par
+    async function loadFlock() {
+      if (!sb || !session?.real) return;
+      const [{ data: lr, error }, { data: aw }, { data: ps }, { data: th }] = await Promise.all([
+        sb.rpc("lifetime_ringer"), sb.from("full_flock_awards").select("player_id,achieved_year").order("achieved_year"),
+        sb.from("players").select("id,first_name,last_name"), sb.from("tees").select("name,tee_holes(hole,par)").eq("name", "Blue")
+      ]);
+      if (error) { $("ffTable").innerHTML = '<tbody><tr><td class="updated" style="padding:14px">Couldn\'t load the Full Flock board.</td></tr></tbody>'; return; }
+      const par = {}; (th || []).forEach(t => (t.tee_holes || []).forEach(h => par[h.hole] = h.par));
+      const P = new Map((ps || []).map(p => [p.id, p])), won = new Map((aw || []).map(a => [a.player_id, a.achieved_year]));
+      const by = new Map(); (lr || []).forEach(r => { const o = by.get(r.player_id) || { id: r.player_id, h: {}, n: 0 }; o.h[r.hole] = r.best; if (r.first_under != null) o.n++; by.set(r.player_id, o); });
+      const nm = p => p ? `${p.first_name} ${(p.last_name || "?")[0]}.` : "?";
+      const rows = [...by.values()].filter(o => P.has(o.id)).sort((a, b) => b.n - a.n || nm(P.get(a.id)).localeCompare(nm(P.get(b.id))));
+      $("ffWinners").innerHTML = won.size ? `<p class="label" style="margin:0 0 6px">Award winners</p><div class="ffwin">${[...won].map(([id, y]) => `<span>🏆 ${esc(nm(P.get(id)))} · ${y}</span>`).join("")}</div>` : '<p class="updated" style="margin:0">No one has the full flock yet.</p>';
+      const line = (o, a) => `<div class="ffg">${Array.from({ length: 9 }, (_, i) => { const h = a + i, v = o.h[h]; return `<span class="${v != null && par[h] && v < par[h] ? "u" : ""}" title="Hole ${h}">${v ?? "–"}</span>`; }).join("")}</div>`;
+      const hd = a => `<div class="ffg hd">${Array.from({ length: 9 }, (_, i) => `<span>${a + i}</span>`).join("")}</div>`;
+      $("ffTable").innerHTML = `<thead><tr><th class="l" style="padding-left:12px">Player</th><th>${hd(1)}${hd(10)}</th><th style="text-align:right;padding-right:12px">Beat par</th></tr></thead><tbody>` +
+        rows.map(o => `<tr class="${o.id === session.playerId ? "mine" : ""}${won.has(o.id) ? " won" : ""}"><td class="l"><b>${esc(nm(P.get(o.id)))}</b>${won.has(o.id) ? " 🏆" : ""}</td><td>${line(o, 1)}${line(o, 10)}</td><td class="n">${o.n}<small>/18</small></td></tr>`).join("") + "</tbody>";
+    }
+    window.addEventListener("hashchange", () => { if (location.hash === "#full-flock") loadFlock(); });
+    window.addEventListener("bcc-session", () => { if (location.hash === "#full-flock") loadFlock(); });
+    if (location.hash === "#full-flock") setTimeout(loadFlock, 0);
 
     // Hall of Champions: one card per season, newest first
     let champsLoaded = false;
@@ -2257,8 +2302,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=57"></script>
-<script src="cup-app.js?v=57"></script>
+<script src="cup.js?v=58"></script>
+<script src="cup-app.js?v=58"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });

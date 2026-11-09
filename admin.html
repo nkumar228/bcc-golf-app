@@ -851,6 +851,12 @@ tr.inc td { color: var(--bad); }
     if (!check(r.error, "")) return;
     r = await sb.from("events").update({ status: "final" }).eq("id", ev.id); if (!check(r.error, `Week ${ev.number} is final`)) return;
     ev.status = "final"; renderEvents(); renderWeekEvents();
+    // Full Flock Award: did this week finish anyone's 18 holes under par? Record it and alert the admins.
+    const ff = await sb.rpc("full_flock_check");
+    if (ff.data?.length) {
+      toast(`Full Flock Award: ${ff.data.map(x => x.name).join(" and ")}!`);
+      sb.functions.invoke("push", { body: { action: "full_flock" } }).catch(() => {});
+    }
   };
   // Start a week's scoring over (e.g. a half-played week that has to be replayed)
   $("wkClear").onclick = async () => {
@@ -983,8 +989,8 @@ Nitin`;
   start();
 })();
 </script>
-<script src="cup.js?v=57"></script>
-<script src="admin-cup.js?v=57"></script>
-<script src="admin-champions.js?v=57"></script>
+<script src="cup.js?v=58"></script>
+<script src="admin-cup.js?v=58"></script>
+<script src="admin-champions.js?v=58"></script>
 </body>
 </html>
