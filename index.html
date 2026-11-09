@@ -260,6 +260,12 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .ffg span.u { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
 .ffg.hd span { background: none; border: 0; height: 14px; font-size: 11px; }
 .stand.ff tr.won td { background: var(--green-soft); }
+.ffleft { display: flex; flex-wrap: wrap; gap: 6px; }
+.ffleft span { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.ffleft b { font-family: var(--display); font-size: 20px; line-height: 1; }
+.ffleft small { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.ffdone { display: flex; gap: 14px; align-items: center; }
+.ffdone > span { font-size: 44px; line-height: 1; }
 .ffwin { display: flex; flex-wrap: wrap; gap: 8px; }
 .ffwin span { background: var(--green-soft); color: var(--green); font-weight: 700; border-radius: 999px; padding: 4px 12px; font-size: 14px; }
 .champ { padding: 14px 16px; display: grid; gap: 12px; }
@@ -744,6 +750,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   </section>
 
   <section class="view" id="v-full-flock" aria-label="Full Flock Award" hidden>
+    <div class="card pad ffme" id="ffMine" hidden></div>
     <div class="card pad">
       <p class="label">Full Flock Award</p>
       <p style="margin:6px 0 0">Better than par on all 18 holes at Avon Fields, over a lifetime in the league. Each square is a player's best score on that hole; filled squares beat par. It updates every time a week is final.</p>
@@ -1783,6 +1790,16 @@ the spirit, intent, and fairness of league competition.</p>
       const nm = p => p ? `${p.first_name} ${(p.last_name || "?")[0]}.` : "?";
       const rows = [...by.values()].filter(o => P.has(o.id)).sort((a, b) => b.n - a.n || nm(P.get(a.id)).localeCompare(nm(P.get(b.id))));
       $("ffWinners").innerHTML = won.size ? `<p class="label" style="margin:0 0 6px">Award winners</p><div class="ffwin">${[...won].map(([id, y]) => `<span>🏆 ${esc(nm(P.get(id)))} · ${y}</span>`).join("")}</div>` : '<p class="updated" style="margin:0">No one has the full flock yet.</p>';
+      // The signed-in player's own card: holes still to beat par on, or the award
+      const me = session.playerId, mine = by.get(me), mb = $("ffMine");
+      if (me && P.has(me)) {
+        if (won.has(me)) mb.innerHTML = `<div class="ffdone"><span>🏆</span><div><p class="label">Your Full Flock</p><h2 style="margin:4px 0 2px">You earned the Full Flock Award!</h2><p class="updated" style="margin:0">Better than par on all 18 holes, finished in ${won.get(me)}.</p></div></div>`;
+        else {
+          const left = Array.from({ length: 18 }, (_, i) => i + 1).filter(h => !(mine?.h[h] != null && par[h] && mine.h[h] < par[h]));
+          mb.innerHTML = `<p class="label">Your Full Flock</p><h2 style="margin:4px 0 2px">${18 - left.length} of 18 done · ${left.length} to go</h2><p class="updated" style="margin:0 0 8px">Holes left to beat par on, with your best so far:</p><div class="ffleft">${left.map(h => `<span><b>${h}</b><small>par ${par[h] ?? "?"} · best ${mine?.h[h] ?? "–"}</small></span>`).join("")}</div>`;
+        }
+        mb.hidden = false;
+      } else mb.hidden = true;
       const line = (o, a) => `<div class="ffg">${Array.from({ length: 9 }, (_, i) => { const h = a + i, v = o.h[h]; return `<span class="${v != null && par[h] && v < par[h] ? "u" : ""}" title="Hole ${h}">${v ?? "–"}</span>`; }).join("")}</div>`;
       const hd = a => `<div class="ffg hd">${Array.from({ length: 9 }, (_, i) => `<span>${a + i}</span>`).join("")}</div>`;
       $("ffTable").innerHTML = `<thead><tr><th class="l" style="padding-left:12px">Player</th><th>${hd(1)}${hd(10)}</th><th style="text-align:right;padding-right:12px">Beat par</th></tr></thead><tbody>` +
