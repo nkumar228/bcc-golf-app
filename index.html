@@ -449,6 +449,8 @@ table.stand.wide { min-width: 520px; }
 .signin .btn { margin-top: 10px; }
 .signin .si-err { color: #b3261e; font-size: 13px; margin: 2px 0 0; }
 .signin .si-err:empty { display: none; }
+.menu hr.menusep { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
+body.is-admin .menu hr.menusep.admin-only { display: block !important; }
 .menu .who { padding: 10px 14px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; font-size: 13px; color: var(--muted); }
 .menu .who b { display: block; color: var(--ink); font-size: 15px; }
 .menu .who .role { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; background: var(--green-soft); color: var(--green); padding: 2px 8px; border-radius: 999px; }
@@ -502,14 +504,17 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   </div>
   <div class="menu" id="menu" hidden>
     <div class="who"><b id="whoName"></b><span id="whoRole" class="role"></span></div>
-    <a href="#handicap">How my handicap is calculated</a>
     <a href="#captain" class="captain-only">Captain page</a>
     <a href="#rounds" class="cup-only">League rounds</a>
-    <a href="#cup-history">QCC Cup history</a>
-    <a href="admin.html" class="admin-only">Admin site</a>
     <a href="#ringers">Ringer boards</a>
-    <a href="#rules">League rules</a>
     <a href="#skins-games">Skins winners</a>
+    <a href="#handicap">How my handicap is calculated</a>
+    <a href="#cup-history">QCC Cup history</a>
+    <hr class="menusep">
+    <a href="#rules">League rules</a>
+    <hr class="menusep admin-only">
+    <a href="admin.html" class="admin-only">Admin site</a>
+    <hr class="menusep">
     <button class="menuitem" id="signOutBtn" type="button">Sign out</button>
   </div>
 </header>
@@ -2217,8 +2222,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=54"></script>
-<script src="cup-app.js?v=54"></script>
+<script src="cup.js?v=55"></script>
+<script src="cup-app.js?v=55"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
