@@ -909,16 +909,20 @@ unavailable.</p>
 <p>Substitute scores shall not generate individual points for absent
 players.</p>
 <h4>Ghost Scores</h4>
-<p>When no substitute is available, a ghost score shall be used.</p>
-<p>The ghost score shall equal the absent player’s average net score over
-their last three (3) rounds on the nine being played, including rounds
-from previous seasons, rounded to the nearest whole number.</p>
-<p>Until the absent player has three (3) rounds on that nine, the ghost
-score shall be 36 net.</p>
+<p>When no substitute is available, a ghost score shall be used. There are
+two kinds:</p>
+<p><b>Ghost – Average:</b> the absent player’s average net score over their
+last three (3) rounds on the nine being played, including rounds from
+previous seasons, rounded to the nearest whole number.</p>
+<p><b>Ghost – Set Score:</b> 36 net, used when the absent player has fewer
+than three (3) rounds on that nine.</p>
 <p>The ghost score is shown on the tee sheet before play.</p>
-<p>For a substitute’s first two (2) rounds on a nine, the team counts the
-ghost score instead of the substitute’s net. After that, the substitute’s
-actual net score counts.</p>
+<h4>Sub Score</h4>
+<p>The <b>Sub Score</b> is the substitute’s actual net score. It counts for
+the team from the substitute’s third (3rd) round on a nine. For the
+substitute’s first two (2) rounds on that nine, the team counts the
+absent player’s ghost score (Ghost – Average or Ghost – Set Score)
+instead.</p>
 <p>Ghost scores shall count only for team competition.</p>
 </div></details>
 <details class="art"><summary>VIII – Local Rules</summary><div class="artb">
@@ -1220,7 +1224,7 @@ the spirit, intent, and fairness of league competition.</p>
       const gr = document.createElement("div");
       gr.className = "prow ghostrow";
       gr.innerHTML = `
-        <div class="pname">Ghost<small>${TEAMS[g.team] || ""} · ${g.forName ? `for ${g.forName}, avg of last 3 here` : "fills the open spot"}</small></div>
+        <div class="pname">${g.kind || "Ghost"}<small>${TEAMS[g.team] || ""} · ${g.forName ? `for ${g.forName}` : "fills the open spot"}</small></div>
         <div class="locked" aria-label="Ghost score locked at ${g.net ?? GHOST_NET} net">${LOCK}<span class="num">${g.net ?? GHOST_NET}</span><small>net</small></div>`;
       rows.appendChild(gr);
     });
@@ -1540,14 +1544,14 @@ the spirit, intent, and fairness of league competition.</p>
       if (lu.length) {
         // A ghost stands in for a missing regular: the one in its slot, or the only one missing
         const regs = (team.team_players || []).map(tp => tp.players).filter(Boolean), absent = regs.filter(p => !lu.some(l => l.player_id === p.id));
-        const gfor = i => { const f = absent.length === 1 ? absent[0] : absent.find(p => p.id === regs[i]?.id) || absent[0]; return { for: f, net: (f && ctx.ghostNet?.get(f.id)) ?? ctx.season.ghost_net ?? 36 }; };
+        const gfor = i => { const f = absent.length === 1 ? absent[0] : absent.find(p => p.id === regs[i]?.id) || absent[0]; const avg = !!f && (ctx.nineRounds?.get(f.id) || 0) >= 3; return { for: f, net: (avg ? ctx.ghostNet?.get(f.id) : null) ?? ctx.season.ghost_net ?? 36, kind: avg ? "Ghost – Average" : "Ghost – Set Score" }; };
         const nm = p => p ? `${p.first_name} ${(p.last_name || "?")[0]}.` : "";
         return lu.map((l, i) => {
           if (l.kind === "ghost") return { ghost: true, ...gfor(i) };
           if (l.kind !== "sub") return { p: l.players, tee: l.tee || l.players?.default_tee };
           // A sub's first 2 rounds on this nine count the ghost number for the team; after that, their own net
           const nth = (ctx.nineRounds?.get(l.player_id) || 0) + 1, g = gfor(i);
-          const subNote = nth <= 2 ? `Sub${g.for ? " for " + nm(g.for) : ""} · round ${nth} of 2 on this nine, so the team counts ${g.net} net` : `Sub${g.for ? " for " + nm(g.for) : ""} · their own net counts for the team`;
+          const subNote = nth <= 2 ? `Sub${g.for ? " for " + nm(g.for) : ""} · round ${nth} on this nine, so the team counts ${g.kind} (${g.net} net)` : `Sub${g.for ? " for " + nm(g.for) : ""} · Sub Score (their own net) counts for the team`;
           return { p: l.players, tee: l.tee || l.players?.default_tee, sub: true, subNote };
         });
       }
@@ -1568,7 +1572,7 @@ the spirit, intent, and fairness of league competition.</p>
       teams.forEach(t => {
         const m = inMatch.get(t.id); if (!m) return;
         rosterOf(t).forEach(r => {
-          if (r.ghost) { (ghostsByTeam[t.id] = ghostsByTeam[t.id] || []).push({ team: t.number, net: r.net, forName: r.for ? `${r.for.first_name} ${(r.for.last_name || "?")[0]}.` : "" }); return; }
+          if (r.ghost) { (ghostsByTeam[t.id] = ghostsByTeam[t.id] || []).push({ team: t.number, net: r.net, kind: r.kind, forName: r.for ? `${r.for.first_name} ${(r.for.last_name || "?")[0]}.` : "" }); return; }
           if (!r.p) return;
           const tee = teeBy(r.tee), hs = holesOf(tee), idx = ctx.hcp.get(r.p.id) ?? 0;
           const h = Math.round(idx * tee.slope / 113 + (+tee.rating - tee.par) + 1e-9);
@@ -2213,8 +2217,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="cup.js?v=53"></script>
-<script src="cup-app.js?v=53"></script>
+<script src="cup.js?v=54"></script>
+<script src="cup-app.js?v=54"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
