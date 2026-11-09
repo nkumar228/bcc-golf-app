@@ -267,6 +267,8 @@ table.csc { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .tnrow.lead b { color: var(--green); }
 .pace { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 .pace b { color: var(--ink, inherit); }
+.pace.clock { background: var(--green); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+.pace.clock b { color: #fff; }
 .pace.slow b { color: var(--green); }
 .pace.fast b, .pace.ok b { color: #2e8b57; }
 .ffleft { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1240,6 +1242,13 @@ the spirit, intent, and fairness of league competition.</p>
     const start = pc.first - E(1) * 60000, last = pc.times[thru - 1], diff = Math.round(((last - start) / 60000) - E(thru));
     const hm = m => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`;
     const tag = Math.abs(diff) <= 2 ? "On pace" : diff > 0 ? `${diff} min behind pace` : `${-diff} min ahead of pace`;
+    // On the clock: behind pace and more than a hole open (season setting, 15 minutes) to the group in front
+    const ah = pc.ahead && thru < 9 ? pc.ahead.times[thru - 1] : null, gap = ah ? Math.round((last - ah) / 60000) : null;
+    if (gap != null && gap > pc.clock && diff > 0) {
+      el.className = "pace clock";
+      el.innerHTML = `⏰ <b>On the clock</b> · ${gap} min behind the group in front (${pc.ahead.name}) and ${diff} min behind pace. Please pick it up.`;
+      el.hidden = false; return;
+    }
     el.className = "pace " + (diff > 5 ? "slow" : diff < -2 ? "fast" : "ok");
     el.innerHTML = thru >= 9 ? `⏱ Round time ${hm((last - start) / 60000)} · target ${hm(pc.target)}` : `⏱ <b>${tag}</b> · thru ${thru} · target ${hm(pc.target)} for 9`;
     el.hidden = false;
@@ -1721,9 +1730,18 @@ the spirit, intent, and fairness of league competition.</p>
       $("liveNote").textContent = ev.status === "final" ? "This week is final. Scores can only be changed by an admin." : "Scores save to the league for everyone. The board refreshes every 20 seconds.";
       const groupGhosts = match ? [match.team_a, match.team_b].flatMap(tid => ghostsByTeam[tid] || []) : [];
       // Pace of play for the group on screen: when each hole was first entered vs the season's target for 9 holes
-      const gIds = players.filter(p => p.group).map(p => p.id), at = {};
-      (scoreRows || []).forEach(r => { if (!gIds.includes(r.player_id)) return; const t = Date.parse(r.created_at || r.updated_at); if (!isNaN(t)) (at[r.hole] = at[r.hole] || {})[r.player_id] = t; });
-      const pace = { target: +season.pace_minutes || 135, times: hs.map(h => { const o = at[h.hole] || {}; return gIds.length && gIds.every(id => o[id] != null) ? Math.max(...gIds.map(id => o[id])) : null; }), first: (() => { const o = at[hs[0]?.hole] || {}; const v = Object.values(o); return v.length ? Math.min(...v) : null; })() };
+      const at = {};
+      (scoreRows || []).forEach(r => { const t = Date.parse(r.created_at || r.updated_at); if (!isNaN(t)) (at[r.hole] = at[r.hole] || {})[r.player_id] = t; });
+      // A hole counts as done for a group when every golfer in it has a score; its time is the last of those entries
+      const timesFor = ids => ({ times: hs.map(h => { const o = at[h.hole] || {}; return ids.length && ids.every(id => o[id] != null) ? Math.max(...ids.map(id => o[id])) : null; }),
+        first: (() => { const o = at[hs[0]?.hole] || {}, v = ids.map(id => o[id]).filter(x => x != null); return v.length ? Math.min(...v) : null; })() });
+      const gIds = players.filter(p => p.group).map(p => p.id);
+      const pace = { target: +season.pace_minutes || 135, clock: +season.clock_minutes || 15, ...timesFor(gIds) };
+      // The group in front: the one that started (first hole in) just before this one, whatever the tee sheet said
+      if (match && pace.first != null) {
+        const others = matchups.filter(m => m.id !== match.id).map(m => ({ m, ...timesFor(players.filter(p => inMatch.get(p.teamId)?.id === m.id).map(p => p.id)) })).filter(g => g.first != null && g.first < pace.first).sort((a, b) => b.first - a.first);
+        if (others[0]) pace.ahead = { times: others[0].times, name: esc([others[0].m.team_a, others[0].m.team_b].map(tid => teamById.get(tid)?.name).filter(Boolean).join(" & ")) };
+      }
       return {
         pace,
         groupKey: match ? match.id : 0,
