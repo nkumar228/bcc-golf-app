@@ -16,7 +16,8 @@
     ["Net Ringer Award", "Lowest 18-hole net ringer · min. rounds"],
     ["Ringer Award", "Lowest 18-hole gross ringer · min. rounds"],
     ["Toilet Bowl", "Fewest total points · everyone counts, missed weeks score 0"],
-    ["Full Flock Award", "Beat par on all 18 holes this season (lifetime)"]
+    ["Full Flock Award", "Beat par on all 18 holes this season (lifetime)"],
+    ["Skins Champion", "Most weekly skins won · min. rounds"]
   ];
   const MANUAL_ONLY = new Set(["Kinnett Award"]);
   const nm = p => p ? `${p.first_name} ${p.last_name}` : "?";
@@ -24,7 +25,7 @@
 
   // Work out every award from the season's data. Returns {award: {winner, value}}
   async function compute(season) {
-    const out = {};
+    const out = {}; let skinRows = [];
     const [{ data: evs }, { data: tms }] = await Promise.all([
       sb.from("events").select("id,number,play_date,status,course_id").eq("season_id", season.id).order("number"),
       sb.from("teams").select("id,name,team_players(player_id)").eq("season_id", season.id)
@@ -38,8 +39,9 @@
       ids.length ? sb.from("scores").select("event_id,player_id,hole,strokes,putts,fairway,green").in("event_id", ids) : { data: [] },
       sb.from("tees").select("name,tee_holes(hole,par,stroke_index)"),
       sb.from("full_flock_awards").select("player_id,achieved_year").eq("achieved_year", season.year),
-      sb.rpc("player_seasons")
-    ]);
+      sb.rpc("player_seasons"),
+      (evs || []).length ? sb.from("skins").select("event_id,winner").in("event_id", evs.map(e => e.id)) : { data: [] }
+    ]).then(a => { skinRows = a[6].data || []; return a; });
     // Awards need half the season's weeks played (9 of 18); the Toilet Bowl doesn't
     const weeks = (evs || []).filter(e => e.status !== "rained_out").length, minR = Math.ceil(weeks / 2);
     const returning = new Set((sy || []).filter(x => x.year < season.year).map(x => x.player_id));
@@ -74,6 +76,12 @@
     out["Fairway Finder Award"] = pick("fw", false, v => `${f(v, 2)} fairways a round`);
     out["Green Machine Award"] = pick("gir", false, v => `${f(v, 2)} greens a round`);
     out["Scotty Cameron"] = pick("putts", true, v => `${f(v, 2)} putts a round`);
+    // Skins Champion (Nitin 2026-11-10): most weekly skins won. Winners are names picked from the player list;
+    // a shared skin ("A & B") counts for each of them.
+    const byName = new Map(A.players.map(p => [nm(p).toLowerCase(), p.id])), wins = new Map();
+    skinRows.forEach(r => String(r.winner || "").split(/\s*(?:&|,|\band\b)\s*/i).forEach(n => { const id = byName.get(n.trim().toLowerCase()); if (id) wins.set(id, (wins.get(id) || 0) + 1); }));
+    pl.forEach(p => { p.skins = wins.get(p.id) || null; });
+    out["Skins Champion"] = pick("skins", false, v => `${f(v, 0)} skin${v === 1 ? "" : "s"}`);
     // Most improved: week-1 index vs index now (only meaningful for the current season)
     if (season.is_current) {
       pl.forEach(p => { const h = A.hcps.get(p.id); p.drop = returning.has(p.id) && p.hi1 != null && h?.handicap_index != null ? +h.handicap_index - p.hi1 : null; p.h2 = h?.handicap_index; });
