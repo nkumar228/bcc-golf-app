@@ -365,6 +365,18 @@ body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
 .btn.small { flex: 0 0 auto; font-size: 14px; padding: 9px 14px; text-decoration: none; display: inline-block; }
 .skins { padding: 16px; border: 2px solid var(--flag); background: linear-gradient(var(--surface), var(--surface)); display: grid; gap: 8px; }
 .sk-hedit { display: grid; gap: 6px; }
+.skpick { position: relative; }
+.skpick > input, .skpick-btn { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; text-align: left; cursor: pointer; }
+.skpick-btn::after { content: "▾"; float: right; color: var(--muted); }
+.skpick-btn.empty { color: var(--muted); }
+.skpick-panel { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-top: 4px; padding: 8px; display: grid; gap: 6px; }
+.skpick-panel[hidden] { display: none; }
+.skpick-panel input[type=search], #skForm .skpick-panel input[type=search] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); width: 100%; }
+.skpick-list { max-height: 220px; overflow-y: auto; display: grid; }
+.skpick-list label, #skForm .skpick-list label { display: flex; align-items: center; justify-content: flex-start; text-align: left; gap: 10px; padding: 7px 4px; font-size: 15px; font-weight: 400; color: var(--ink); border-bottom: 1px solid var(--line); margin: 0; }
+.skpick-list label[hidden] { display: none; }
+.skpick .skpick-list input[type=checkbox], #skForm .skpick-list input[type=checkbox] { flex: none; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--flag); }
+.skpick-done { justify-self: end; }
 .sk-hedit input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; }
 .skins-head { display: flex; justify-content: space-between; align-items: baseline; }
 .sk-title { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.05; text-wrap: balance; }
@@ -632,9 +644,8 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
         <datalist id="skIdeas"></datalist>
         <label for="skNote">Details</label>
         <input id="skNote" type="text" placeholder="e.g. $2 buy-in, winner takes the pot">
-        <label for="skWin">Winner</label>
-        <input id="skWin" type="text" list="skPlayers" autocomplete="off" placeholder="Search players · add after the round">
-        <datalist id="skPlayers"></datalist>
+        <label>Winner</label>
+        <input id="skWin" type="hidden">
         <div class="sk-actions"><button class="btn small" type="submit">Post skins</button><button class="btn small secondary" type="button" id="skCancel">Cancel</button></div>
         <p class="updated" style="margin:0">Only league admins see Edit. Adding a winner saves the week to Past winners, and everyone sees the update.</p>
       </form>
@@ -2222,21 +2233,38 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
         if (adm && skEditing === r.n) return `<tr data-skn="${r.n}">${wk}<td class="l" colspan="3"><div class="sk-hedit">
           <input data-f="game" value="${esc(r.title)}" placeholder="Game" list="skIdeas" aria-label="Game">
           <input data-f="details" value="${esc(r.note || "")}" placeholder="Details" aria-label="Details">
-          <input data-f="winner" value="${esc(r.winner || "")}" placeholder="Search players" list="skPlayers" autocomplete="off" aria-label="Winner">
+          <input data-f="winner" type="hidden" value="${esc(r.winner || "")}">
           <div class="sk-actions"><button class="btn small" type="button" data-sk="save">Save</button><button class="btn small secondary" type="button" data-sk="cancel">Cancel</button></div></div></td></tr>`;
         return `<tr data-skn="${r.n}">${wk}<td class="l">${esc(r.title)}</td><td class="l">${r.winner ? `<b>${esc(r.winner)}</b>` : `<span class="updated">No winner</span>`}</td>` +
           (adm ? `<td style="white-space:nowrap"><button class="linkbtn" type="button" data-sk="edit">Edit</button> · <button class="linkbtn" type="button" data-sk="clear">Clear</button></td>` : "") + `</tr>`;
       }).join("") + `</tbody>`;
     $("skHist").querySelectorAll("[data-sk]").forEach(b => b.onclick = () => skAction(b.dataset.sk, +b.closest("tr").dataset.skn));
+    $("skHist").querySelectorAll('[data-f="winner"]').forEach(mountPicker);
   }
-  // The winner has to be a player from the list (or a shared skin, "A & B"), so the season award can count it
-  function winnerOk(w) {
-    const names = new Set([...$("skPlayers").options].map(o => o.value.toLowerCase()));
-    if (!w || !names.size) return true;
-    const bad = w.split(/\s*&\s*/).filter(n => !names.has(n.toLowerCase()));
-    if (!bad.length) return true;
-    alert(`Pick the winner from the player list (${bad.join(", ")} isn't a player). For a shared skin, put "&" between names.`);
-    return false;
+  // Winner pull-down with check boxes and a search box (Nitin 2026-11-10). Tick everyone who won a skin;
+  // the names are saved as "A & B" so the season's skins award can count each of them.
+  let PLAYERS = [];
+  function mountPicker(inp) {
+    if (inp.nextElementSibling?.classList.contains("skpick")) inp.nextElementSibling.remove();
+    const w = document.createElement("div"); w.className = "skpick"; inp.after(w);
+    if (!PLAYERS.length) { // no player list (demo): plain text
+      w.innerHTML = `<input type="text" placeholder="Winner" aria-label="Winner" value="${esc(inp.value)}">`;
+      w.firstChild.oninput = e => inp.value = e.target.value; return;
+    }
+    const chosen = new Set(inp.value.split(/\s*&\s*/).filter(Boolean));
+    const names = [...new Set([...PLAYERS, ...chosen])];
+    w.innerHTML = `<button type="button" class="skpick-btn" aria-expanded="false"></button>
+      <div class="skpick-panel" hidden><input type="search" placeholder="Search players" aria-label="Search players">
+      <div class="skpick-list">${names.map(n => `<label><input type="checkbox" value="${esc(n)}"${chosen.has(n) ? " checked" : ""}> ${esc(n)}</label>`).join("")}</div>
+      <button type="button" class="linkbtn skpick-done">Done</button></div>`;
+    const btn = w.querySelector(".skpick-btn"), panel = w.querySelector(".skpick-panel"), q = panel.querySelector("input[type=search]");
+    const show = () => { btn.textContent = chosen.size ? [...chosen].join(" & ") : "Pick winner(s) · after the round"; btn.classList.toggle("empty", !chosen.size); inp.value = [...chosen].join(" & "); };
+    const open = on => { panel.hidden = !on; btn.setAttribute("aria-expanded", String(on)); if (on) { q.value = ""; q.oninput(); q.focus(); } };
+    btn.onclick = () => open(panel.hidden);
+    panel.querySelector(".skpick-done").onclick = () => open(false);
+    q.oninput = () => { const t = q.value.trim().toLowerCase(); panel.querySelectorAll("label").forEach(l => l.hidden = !!t && !l.textContent.toLowerCase().includes(t)); };
+    panel.querySelectorAll("input[type=checkbox]").forEach(c => c.onchange = () => { c.checked ? chosen.add(c.value) : chosen.delete(c.value); show(); });
+    show();
   }
   async function skAction(act, n) {
     const r = hist.find(x => x.n === n); if (!r) return;
@@ -2248,7 +2276,6 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     } else {
       const v = f => $("skHist").querySelector(`tr[data-skn="${n}"] [data-f="${f}"]`).value.trim();
       row = { game: v("game"), details: v("details") || null, winner: v("winner") || null };
-      if (!winnerOk(row.winner || "")) return;
       if (!row.game) { alert("Add the game, or use Clear to remove the week."); return; }
     }
     if (shared() && r.id) {
@@ -2268,7 +2295,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   }
   $("skEditBtn").onclick = () => {
     $("skCustom").value = sk.unposted ? "" : sk.title;
-    $("skNote").value = sk.unposted ? "" : (sk.note || ""); $("skWin").value = sk.winner || "";
+    $("skNote").value = sk.unposted ? "" : (sk.note || ""); $("skWin").value = sk.winner || ""; mountPicker($("skWin"));
     $("skForm").hidden = false; $("skView").hidden = true; $("skEditBtn").hidden = true;
   };
   const close = () => { $("skForm").hidden = true; $("skView").hidden = false; $("skEditBtn").hidden = !document.body.classList.contains("is-admin"); };
@@ -2289,7 +2316,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const { data: rows } = await sb.from("skins").select("event_id,game,details,winner").in("event_id", evs.map(e => e.id));
     // Winner pick list: every player, searchable as you type (Nitin 2026-11-10), so the Skins Champion award can count wins
     const { data: pls } = await sb.from("players").select("first_name,last_name,active").order("last_name").order("first_name");
-    $("skPlayers").innerHTML = (pls || []).filter(p => p.active !== false).map(p => `<option value="${esc(p.first_name + " " + p.last_name)}"></option>`).join("");
+    PLAYERS = (pls || []).filter(p => p.active !== false).map(p => p.first_name + " " + p.last_name);
     const byId = new Map(evs.map(e => [e.id, e]));
     const cur = (rows || []).find(r => r.event_id === ev.id);
     sk = cur ? { title: cur.game, note: cur.details || "", winner: cur.winner || "" } : { title: "Not posted yet", note: `Week ${ev.number} · ${dshort(ev.play_date)}`, winner: "", unposted: true };
@@ -2303,7 +2330,6 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const title = $("skCustom").value.trim();
     if (!title) { $("skCustom").focus(); return; }
     sk = { title, note: $("skNote").value.trim(), winner: $("skWin").value.trim() };
-    if (!winnerOk(sk.winner)) { $("skWin").focus(); return; }
     if (shared() && EVT.id) {
       BCC.sb.from("skins").upsert({ event_id: EVT.id, game: sk.title, details: sk.note || null, winner: sk.winner || null }).then(({ error }) => {
         if (error) alert("Couldn't save the skins post. Check your signal and try again."); else loadShared();

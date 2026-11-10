@@ -17,7 +17,7 @@
     ["Ringer Award", "Lowest 18-hole gross ringer · min. rounds"],
     ["Toilet Bowl", "Fewest total points · everyone counts, missed weeks score 0"],
     ["Full Flock Award", "Beat par on all 18 holes this season (lifetime)"],
-    ["Skins Champion", "Most weekly skins won · min. rounds"]
+    ["Buffalo Bill Award", "Most weekly skins won · anyone, no minimum"]
   ];
   const MANUAL_ONLY = new Set(["Kinnett Award"]);
   const nm = p => p ? `${p.first_name} ${p.last_name}` : "?";
@@ -76,12 +76,12 @@
     out["Fairway Finder Award"] = pick("fw", false, v => `${f(v, 2)} fairways a round`);
     out["Green Machine Award"] = pick("gir", false, v => `${f(v, 2)} greens a round`);
     out["Scotty Cameron"] = pick("putts", true, v => `${f(v, 2)} putts a round`);
-    // Skins Champion (Nitin 2026-11-10): most weekly skins won. Winners are names picked from the player list;
+    // Buffalo Bill Award (Nitin 2026-11-10): most weekly skins won. Winners are names picked from the player list;
     // a shared skin ("A & B") counts for each of them.
     const byName = new Map(A.players.map(p => [nm(p).toLowerCase(), p.id])), wins = new Map();
     skinRows.forEach(r => String(r.winner || "").split(/\s*(?:&|,|\band\b)\s*/i).forEach(n => { const id = byName.get(n.trim().toLowerCase()); if (id) wins.set(id, (wins.get(id) || 0) + 1); }));
-    pl.forEach(p => { p.skins = wins.get(p.id) || null; });
-    out["Skins Champion"] = pick("skins", false, v => `${f(v, 0)} skin${v === 1 ? "" : "s"}`);
+    // Anyone can win it, subs included, with no minimum rounds (Nitin 2026-11-10)
+    if (wins.size) { const mx = Math.max(...wins.values()); out["Buffalo Bill Award"] = { winner: [...wins].filter(([, v]) => v === mx).map(([id]) => nm(P.get(id))).join(" & "), value: `${mx} skin${mx === 1 ? "" : "s"}` }; }
     // Most improved: week-1 index vs index now (only meaningful for the current season)
     if (season.is_current) {
       pl.forEach(p => { const h = A.hcps.get(p.id); p.drop = returning.has(p.id) && p.hi1 != null && h?.handicap_index != null ? +h.handicap_index - p.hi1 : null; p.h2 = h?.handicap_index; });
