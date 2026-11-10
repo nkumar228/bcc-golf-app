@@ -115,8 +115,14 @@ tr.inc td { color: var(--bad); }
       <h2>Players</h2>
       <p class="note">A player can sign in once their email is here. Changes save as you leave each box. Admins see the admin tools in the app and here.</p>
       <div class="row" style="margin-bottom:12px">
-        <input id="pFilter" placeholder="Search names" style="width:200px">
+        <input id="pFilter" placeholder="Search name or email" style="width:200px">
+        <select id="pfTeam" aria-label="Team"><option value="">All players</option><option value="reg">Regulars</option><option value="sub">Subs</option></select>
+        <select id="pfTee" aria-label="Tee"><option value="">All tees</option><option>Blue</option><option>White</option><option>Gold</option></select>
+        <select id="pfSigned" aria-label="Signed in"><option value="">Any sign-in</option><option value="yes">Signed in</option><option value="not">Not yet</option><option value="noemail">No email</option></select>
+        <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="pfAdmin"> Admins only</label>
         <label class="row" style="gap:6px;font-size:14px"><input type="checkbox" id="pShowInactive"> Show inactive</label>
+        <button class="btn secondary" type="button" id="pfClear" style="padding:5px 10px;font-size:13px">Clear filters</button>
+        <span class="note" id="pfCount" style="margin:0"></span>
       </div>
       <div class="scroll"><table id="playersTable"></table></div>
       <h3 style="margin:18px 0 8px;font-size:15px">Add a player</h3>
@@ -383,8 +389,16 @@ tr.inc td { color: var(--bad); }
   ];
   function renderPlayers() {
     const f = $("pFilter").value.trim().toLowerCase(), showOff = $("pShowInactive").checked;
+    const fTeam = $("pfTeam").value, fTee = $("pfTee").value, fSigned = $("pfSigned").value, fAdmin = $("pfAdmin").checked;
+    // Team list: regulars, subs, or one team (filled in from this season's teams)
+    const tSel = $("pfTeam"), keep = tSel.value;
+    tSel.innerHTML = `<option value="">All players</option><option value="reg">Regulars</option><option value="sub">Subs</option>` + teams.map(t => `<option value="t${t.id}">#${t.number} ${esc(t.name)}</option>`).join("");
+    tSel.value = [...tSel.options].some(o => o.value === keep) ? keep : "";
+    const signedOf = p => p.user_id ? "yes" : p.email ? "not" : "noemail";
     const key = (P_COLS.find(c => c[0] === pSort.k) || P_COLS[0])[2];
-    const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f)))
+    const list = players.filter(p => (showOff || p.active) && (!f || pname(p).toLowerCase().includes(f) || `${p.first_name} ${p.last_name}`.toLowerCase().includes(f) || (p.email || "").toLowerCase().includes(f))
+        && (!fTeam || (fTeam === "reg" ? !!teamOf(p.id) : fTeam === "sub" ? !teamOf(p.id) : "t" + teamOf(p.id)?.id === fTeam))
+        && (!fTee || p.default_tee === fTee) && (!fSigned || signedOf(p) === fSigned) && (!fAdmin || p.is_admin))
       .sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : pname(a).localeCompare(pname(b))) * (x === y ? 1 : pSort.dir); });
     $("playersTable").innerHTML = `<thead><tr>${P_COLS.map(([k, label]) => `<th data-sort="${k}" style="cursor:pointer;user-select:none;white-space:nowrap"${k === "hcp" ? ` title="Pre-handicap from the player's recent rounds, all seasons"` : ""}>${label}${pSort.k === k ? (pSort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
       list.map(p => { const t = teamOf(p.id); return `<tr data-id="${p.id}">
@@ -396,6 +410,7 @@ tr.inc td { color: var(--bad); }
         <td><input type="checkbox" data-f="is_admin"${p.is_admin ? " checked" : ""} aria-label="Admin"></td>
         <td><input type="checkbox" data-f="active"${p.active ? " checked" : ""} aria-label="Active"></td>
         <td>${p.user_id ? '<span class="pill">Yes</span>' : (p.email ? '<span class="pill warn">Not yet</span>' : "")}</td></tr>`; }).join("") + `</tbody>`;
+    $("pfCount").textContent = `Showing ${list.length} of ${players.filter(p => showOff || p.active).length}`;
     $("playersTable").querySelectorAll("[data-sort]").forEach(th => th.onclick = () => { pSort = { k: th.dataset.sort, dir: pSort.k === th.dataset.sort ? -pSort.dir : 1 }; renderPlayers(); });
     $("playersTable").querySelectorAll("[data-f]").forEach(el => el.onchange = async () => {
       const id = +el.closest("tr").dataset.id, f = el.dataset.f;
@@ -407,6 +422,8 @@ tr.inc td { color: var(--bad); }
     });
   }
   $("pFilter").oninput = renderPlayers; $("pShowInactive").onchange = renderPlayers;
+  ["pfTeam", "pfTee", "pfSigned", "pfAdmin"].forEach(id => $(id).onchange = renderPlayers);
+  $("pfClear").onclick = () => { $("pFilter").value = ""; ["pfTeam", "pfTee", "pfSigned"].forEach(id => $(id).value = ""); $("pfAdmin").checked = false; $("pShowInactive").checked = false; renderPlayers(); };
   $("addPlayer").onsubmit = async e => {
     e.preventDefault();
     const row = { last_name: $("apLast").value.trim(), first_name: $("apFirst").value.trim(), email: $("apEmail").value.trim().toLowerCase() || null };
