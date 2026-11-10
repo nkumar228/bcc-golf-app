@@ -364,6 +364,8 @@ body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
 .hero-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; }
 .btn.small { flex: 0 0 auto; font-size: 14px; padding: 9px 14px; text-decoration: none; display: inline-block; }
 .skins { padding: 16px; border: 2px solid var(--flag); background: linear-gradient(var(--surface), var(--surface)); display: grid; gap: 8px; }
+.sk-hedit { display: grid; gap: 6px; }
+.sk-hedit input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); width: 100%; }
 .skins-head { display: flex; justify-content: space-between; align-items: baseline; }
 .sk-title { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.05; text-wrap: balance; }
 .sk-desc { color: var(--muted); font-size: 14px; margin-top: 4px; }
@@ -1073,7 +1075,7 @@ the spirit, intent, and fairness of league competition.</p>
     <div class="card pad rules">
       <p class="label">Skins</p>
       <h2>Past winners</h2>
-      <p class="updated" style="margin:0 0 8px">Each week's game and winner, saved when an admin posts the winner on Home.</p>
+      <p class="updated" style="margin:0 0 8px">Each week's game and winner, saved when an admin posts the winner on Home.</p><p class="updated admin-only" style="margin:0 0 8px">As an admin you can edit or clear any week here. Clearing a week's scores doesn't touch its skins.</p>
       <table class="stand" id="skHist"></table>
       <p class="updated" id="skHistEmpty" style="margin:8px 0 0">No winners posted yet. 2026 winners weren't kept in GolfSoftware, so the history starts with the first winner posted here.</p>
       <h2 style="margin-top:22px">Game ideas</h2>
@@ -2205,12 +2207,48 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const loadHist = () => { try { return JSON.parse(localStorage.getItem("bcc-skins-hist")) || []; } catch (e) { return []; } };
   let hist = loadHist();
+  // Admins (Nitin 2026-11-10) can edit or clear any week's skins here. They also see weeks with a game but no winner yet.
+  let skEditing = null;
+  const isAdm = () => document.body.classList.contains("is-admin");
   function renderHist() {
-    const rows = [...hist].sort((a, b) => b.n - a.n);
+    const adm = isAdm();
+    const rows = [...hist].filter(r => adm || r.winner).sort((a, b) => b.n - a.n);
     $("skHistEmpty").hidden = rows.length > 0;
     $("skHist").hidden = rows.length === 0;
-    $("skHist").innerHTML = `<thead><tr><th>Wk</th><th class="l">Game</th><th class="l">Winner</th></tr></thead><tbody>` +
-      rows.map(r => `<tr><td class="num" style="white-space:nowrap">${r.n}<br><small class="updated">${esc(r.date)}</small></td><td class="l">${esc(r.title)}</td><td class="l"><b>${esc(r.winner)}</b></td></tr>`).join("") + `</tbody>`;
+    $("skHist").innerHTML = `<thead><tr><th>Wk</th><th class="l">Game</th><th class="l">Winner</th>${adm ? "<th></th>" : ""}</tr></thead><tbody>` +
+      rows.map(r => {
+        const wk = `<td class="num" style="white-space:nowrap">${r.n}<br><small class="updated">${esc(r.date)}</small></td>`;
+        if (adm && skEditing === r.n) return `<tr data-skn="${r.n}">${wk}<td class="l" colspan="3"><div class="sk-hedit">
+          <input data-f="game" value="${esc(r.title)}" placeholder="Game" list="skIdeas" aria-label="Game">
+          <input data-f="details" value="${esc(r.note || "")}" placeholder="Details" aria-label="Details">
+          <input data-f="winner" value="${esc(r.winner || "")}" placeholder="Winner" aria-label="Winner">
+          <div class="sk-actions"><button class="btn small" type="button" data-sk="save">Save</button><button class="btn small secondary" type="button" data-sk="cancel">Cancel</button></div></div></td></tr>`;
+        return `<tr data-skn="${r.n}">${wk}<td class="l">${esc(r.title)}</td><td class="l">${r.winner ? `<b>${esc(r.winner)}</b>` : `<span class="updated">No winner</span>`}</td>` +
+          (adm ? `<td style="white-space:nowrap"><button class="linkbtn" type="button" data-sk="edit">Edit</button> · <button class="linkbtn" type="button" data-sk="clear">Clear</button></td>` : "") + `</tr>`;
+      }).join("") + `</tbody>`;
+    $("skHist").querySelectorAll("[data-sk]").forEach(b => b.onclick = () => skAction(b.dataset.sk, +b.closest("tr").dataset.skn));
+  }
+  async function skAction(act, n) {
+    const r = hist.find(x => x.n === n); if (!r) return;
+    if (act === "edit") { skEditing = n; renderHist(); return; }
+    if (act === "cancel") { skEditing = null; renderHist(); return; }
+    let row = null;
+    if (act === "clear") {
+      if (!confirm(`Clear week ${n}'s skins? This removes the game and the winner (${r.winner || "none posted"}).`)) return;
+    } else {
+      const v = f => $("skHist").querySelector(`tr[data-skn="${n}"] [data-f="${f}"]`).value.trim();
+      row = { game: v("game"), details: v("details") || null, winner: v("winner") || null };
+      if (!row.game) { alert("Add the game, or use Clear to remove the week."); return; }
+    }
+    if (shared() && r.id) {
+      const { error } = row ? await BCC.sb.from("skins").update(row).eq("event_id", r.id) : await BCC.sb.from("skins").delete().eq("event_id", r.id);
+      if (error) { alert("Couldn't save that. Check your signal and try again."); return; }
+      skEditing = null; await loadShared(); return;
+    }
+    hist = row ? hist.map(x => x.n === n ? { ...x, title: row.game, note: row.details || "", winner: row.winner || "" } : x) : hist.filter(x => x.n !== n);
+    if (n === EVT.n) sk = row ? { title: row.game, note: row.details || "", winner: row.winner || "" } : DEFAULT;
+    try { localStorage.setItem("bcc-skins", JSON.stringify(sk)); localStorage.setItem("bcc-skins-hist", JSON.stringify(hist)); } catch (err) {}
+    skEditing = null; renderHist(); renderSkins();
   }
   function renderSkins() {
     $("skTitle").textContent = sk.title;
@@ -2241,10 +2279,10 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const byId = new Map(evs.map(e => [e.id, e]));
     const cur = (rows || []).find(r => r.event_id === ev.id);
     sk = cur ? { title: cur.game, note: cur.details || "", winner: cur.winner || "" } : { title: "Not posted yet", note: `Week ${ev.number} · ${dshort(ev.play_date)}`, winner: "", unposted: true };
-    hist = (rows || []).filter(r => r.winner).map(r => { const e = byId.get(r.event_id); return { n: e.number, date: dshort(e.play_date), title: r.game, winner: r.winner }; });
+    hist = (rows || []).map(r => { const e = byId.get(r.event_id); return { id: r.event_id, n: e.number, date: dshort(e.play_date), title: r.game, note: r.details || "", winner: r.winner || "" }; });
     renderSkins(); renderHist();
   }
-  window.onSession = () => { close(); loadShared(); };
+  window.onSession = () => { close(); renderHist(); loadShared(); };
   $("skCancel").onclick = close;
   $("skForm").addEventListener("submit", e => {
     e.preventDefault();
@@ -2257,7 +2295,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       });
     }
     hist = hist.filter(r => r.n !== EVT.n);
-    if (sk.winner) hist.push({ n: EVT.n, date: EVT.date, title: sk.title, winner: sk.winner });
+    hist.push({ n: EVT.n, date: EVT.date, title: sk.title, note: sk.note, winner: sk.winner });
     try { localStorage.setItem("bcc-skins", JSON.stringify(sk)); localStorage.setItem("bcc-skins-hist", JSON.stringify(hist)); } catch (err) {}
     renderHist();
     renderSkins(); close();
