@@ -83,6 +83,15 @@
     }
     return out;
   }
+  async function saveResult() {
+    const [A_, B_] = D.sides; if (!cup || !A_ || !B_) return;
+    const { data: had } = await sb.from("cup_history").select("id").eq("year", cup.year);
+    if (had && had.length) return;
+    const t = totals(), tie = t[A_.id] === t[B_.id], holder = D.sides.find(x => x.id === cup.defending_side_id);
+    const winner = tie ? holder?.name || null : (t[A_.id] > t[B_.id] ? A_ : B_).name;
+    const { error } = await sb.from("cup_history").insert({ year: cup.year, side1_name: A_.name, side1_points: t[A_.id], side2_name: B_.name, side2_points: t[B_.id], winner, notes: tie && holder ? `Tied; ${holder.name} kept the Cup` : null });
+    if (check(error, `${cup.year} result saved to the Cup history: ${A_.name} ${t[A_.id]}, ${B_.name} ${t[B_.id]}`)) loadHistory();
+  }
   function totals() {
     const t = Object.fromEntries(D.sides.map(s => [s.id, 0]));
     D.rounds.filter(r => r.status === "revealed" || r.status === "final").forEach(r => matchesOf(r).forEach(x => Object.entries(x.pts.pts).forEach(([k, v]) => t[k] += v)));
@@ -324,6 +333,9 @@
           if (st === "lineups") pingTurn(r.id);
           // Round finished: the captains of the next round get their format / order call
           if (st === "final") { const nx = D.rounds.filter(x => x.number > r.number && x.status !== "final").sort((a, b) => a.number - b.number)[0]; if (nx) pingTurn(nx.id); }
+          // Last round final: write the Cup's result into the Cup history (once), so it shows there and can be edited
+          r.status = st;
+          if (st === "final" && D.rounds.every(x => x.status === "final")) await saveResult();
           loadCup();
         }
       });
