@@ -25,9 +25,11 @@
   function build() {
     const rows = [], skipped = [], [sa, sb_] = D.sides;
     finals().filter(r => pick === "all" || r.id === +pick).forEach(r => {
-      const pairs = (F[r.format] || F.singles).pairs, game = GAME[r.format] || "Individual";
       A.cupMatchesOf(r).forEach(x => {
-        if (!x.ea || !x.eb || !x.pts.final) { skipped.push(`${r.name} match ${x.slot} (${!x.ea || !x.eb ? "forfeit" : "not finished"})`); return; }
+        if (!x.ea && !x.eb) return; // nobody in this slot: halved in the Cup score, but no golfer to record
+        if (!x.ea || !x.eb || !x.pts.final) { skipped.push(`${r.name} match ${x.slot} (${!x.ea || !x.eb ? "no opponent, halved" : "not finished"})`); return; }
+        // One golfer on each side of a team round plays singles, so it goes in as Individual
+        const pairs = x.m.format.pairs, game = x.m.format.solo ? "Individual" : GAME[r.format] || "Individual";
         [[sa, x.ea, x.eb], [sb_, x.eb, x.ea]].forEach(([side, me, them]) => {
           const p = x.pts.pts[side.id], ids = [me.player_id, pairs ? me.partner_id : null], opp = [them.player_id, pairs ? them.partner_id : null];
           ids.forEach((pid, i) => {

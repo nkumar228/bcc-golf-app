@@ -73,13 +73,12 @@
   // ---------- totals ----------
   function matchesOf(r) {
     const [sa, sb_] = D.sides; if (!sa || !sb_) return [];
-    const es = D.entries.filter(e => e.round_id === r.id), n = Math.max(0, ...es.map(e => e.slot));
+    const es = D.entries.filter(e => e.round_id === r.id), n = window.Cup.slotsFor(r, D.sides, D.cp, canPlay, Math.max(0, ...es.map(e => e.slot)));
     const sc = new Map(D.scores.filter(s => s.round_id === r.id).map(s => [`${s.side_id}:${s.player_id}:${s.hole}`, s.strokes]));
     const info = pid => { const p = P(pid), c = D.cp.find(x => x.player_id === pid); return { name: p ? p.last_name : "?", index: c?.handicap_index ?? A.hcps.get(pid)?.handicap_index ?? 0, tee: p?.default_tee || "Blue" }; };
     const out = [];
     for (let slot = 1; slot <= n; slot++) {
       const ea = es.find(e => e.side_id === sa.id && e.slot === slot && e.player_id), eb = es.find(e => e.side_id === sb_.id && e.slot === slot && e.player_id);
-      if (!ea && !eb) continue;
       const m = window.Cup.setupMatch(r, [{ id: sa.id, entry: ea }, { id: sb_.id, entry: eb }], info, D.tbc);
       const st = window.Cup.matchStatus(m, [sa.id, sb_.id], sc, sideName);
       const ov = D.ovr.find(o => o.round_id === r.id && o.slot === slot);
@@ -88,6 +87,15 @@
     return out;
   }
   A.cupMatchesOf = r => D ? matchesOf(r) : [];
+  async function saveResult() {
+    const [A_, B_] = D.sides; if (!cup || !A_ || !B_) return;
+    const { data: had } = await sb.from("cup_history").select("id").eq("year", cup.year);
+    if (had && had.length) return;
+    const t = totals(), tie = t[A_.id] === t[B_.id], holder = D.sides.find(x => x.id === cup.defending_side_id);
+    const winner = tie ? holder?.name || null : (t[A_.id] > t[B_.id] ? A_ : B_).name;
+    const { error } = await sb.from("cup_history").insert({ year: cup.year, side1_name: A_.name, side1_points: t[A_.id], side2_name: B_.name, side2_points: t[B_.id], winner, notes: tie && holder ? `Tied; ${holder.name} kept the Cup` : null });
+    if (check(error, `${cup.year} result saved to the Cup history: ${A_.name} ${t[A_.id]}, ${B_.name} ${t[B_.id]}`)) loadHistory();
+  }
   function totals() {
     const t = Object.fromEntries(D.sides.map(s => [s.id, 0]));
     D.rounds.filter(r => r.status === "revealed" || r.status === "final").forEach(r => matchesOf(r).forEach(x => Object.entries(x.pts.pts).forEach(([k, v]) => t[k] += v)));
@@ -132,6 +140,7 @@
       </div>
       <div class="row" style="margin-bottom:8px">
         <label style="font-weight:600">Name</label><input id="cupName" value="${esc(cup.name)}" style="width:220px">
+        <label style="font-weight:600">Year</label><input id="cupYear" type="number" class="w-num" value="${cup.year}" title="The year this Cup counts as in the Cup history">
         <label style="font-weight:600">Defending side</label><select id="cupDef">${sideOpts(cup.defending_side_id, "Not set")}</select>
       </div>
       <div class="row" style="margin-bottom:8px">
@@ -223,7 +232,9 @@
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === s.id);
     const n = Math.max(f.pairs ? Math.ceil(mine.length / 2) : mine.length, ...es.map(e => e.slot), 1);
     const subs = D.cp.filter(c => c.side_id == null && (canPlay(r, s.id, c.player_id) || inLineup.has(c.player_id))).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
-    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
+    // A player already in this round's lineups shows greyed out, so nobody can be picked twice (Nitin 2026-11-11)
+    const used = new Set(D.entries.filter(e => e.round_id === r.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
+    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : used.has(p.id) ? " disabled" : ""}>${esc(pname(p))}${p.id !== sel && used.has(p.id) ? " (picked)" : ""}</option>`;
     const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
     return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "picks" : "lineup"} ${!r.blind ? `<span class="pill">${es.filter(e => e.player_id).length} picked</span>` : submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
@@ -269,6 +280,7 @@
       if (check(error, `${cup.name} deleted`)) { cup = null; loadCups(); }
     };
     $("cupName").onchange = async e => { const { error } = await sb.from("cups").update({ name: e.target.value.trim() }).eq("id", cup.id); if (check(error)) loadCups(cup.id); };
+    $("cupYear").onchange = async e => { const y = +e.target.value; if (!y) return; const { error } = await sb.from("cups").update({ year: y }).eq("id", cup.id); if (check(error, `Counts as ${y} in the Cup history`)) { cup.year = y; loadHistory(); } };
     $("cupDef").onchange = async e => { const { error } = await sb.from("cups").update({ defending_side_id: +e.target.value || null }).eq("id", cup.id); if (check(error)) cup.defending_side_id = +e.target.value || null; };
     body.querySelectorAll("[data-sf]").forEach(el => el.onchange = async () => {
       const id = +el.closest("tr").dataset.side, k = el.dataset.sf, v = k === "captain_id" ? (+el.value || null) : el.value;
@@ -325,6 +337,9 @@
           if (st === "lineups") pingTurn(r.id);
           // Round finished: the captains of the next round get their format / order call
           if (st === "final") { const nx = D.rounds.filter(x => x.number > r.number && x.status !== "final").sort((a, b) => a.number - b.number)[0]; if (nx) pingTurn(nx.id); }
+          // Last round final: write the Cup's result into the Cup history (once), so it shows there and can be edited
+          r.status = st;
+          if (st === "final" && D.rounds.every(x => x.status === "final")) await saveResult();
           loadCup();
         }
       });
@@ -345,6 +360,9 @@
         const sid = +sbox.dataset.side;
         sbox.querySelectorAll("[data-slot]").forEach(row => row.querySelectorAll("[data-e]").forEach(el => el.onchange = async () => {
           const slot = +row.dataset.slot, cur = D.entries.find(e => e.round_id === r.id && e.side_id === sid && e.slot === slot) || {};
+          const pick = +el.value || null, clash = pick && D.entries.find(e => e.round_id === r.id && (e.player_id === pick || e.partner_id === pick) && !(e.side_id === sid && e.slot === slot && cur[el.dataset.e] === pick))
+            || (pick && el.dataset.e === "partner_id" && cur.player_id === pick) || (pick && el.dataset.e === "player_id" && cur.partner_id === pick);
+          if (clash) { alert(`${pname(P(pick) || {})} is already in this round's lineups.`); loadCup(); return; }
           const rec = { round_id: r.id, side_id: sid, slot, player_id: cur.player_id ?? null, partner_id: cur.partner_id ?? null, [el.dataset.e]: +el.value || null };
           const res = !rec.player_id && !rec.partner_id ? await sb.from("cup_entries").delete().eq("round_id", r.id).eq("side_id", sid).eq("slot", slot)
             : await sb.from("cup_entries").upsert(rec, { onConflict: "round_id,side_id,slot" });
