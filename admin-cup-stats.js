@@ -183,12 +183,16 @@
       const out = await addToWorkbook(await file.arrayBuffer(), rows);
       const what = out.added ? `${out.added} rows (rows ${out.start} to ${out.end})` : "nothing new";
       if (!out.added) { showResult(`Nothing to add: all ${rows.length} rows are already in ${esc(file.name)}.`); return; }
+      let saved = false, why = "";
       if (handle && handle.createWritable) {
-        if (!confirm(`Add ${what} to the Data Entry tab and save ${file.name}?${out.newPlayers.length ? `\n\nAlso added to the Lists tab: ${out.newPlayers.join(", ")}.` : ""}${out.dupes ? `\n\n${out.dupes} rows are already in the workbook and are left alone.` : ""}\n\nClose the file in Excel first.`)) return;
-        try { const w = await handle.createWritable(); await w.write(out.blob); await w.close(); }
-        catch (e) { toast("Couldn't save over the file (is it open in Excel?). Downloading a copy instead.", true); download(out.blob, file.name); }
-      } else download(out.blob, file.name);
-      showResult(`Added ${what} to ${esc(file.name)}${handle && handle.createWritable ? "" : " (downloaded as a new copy; replace your old file with it)"}.${out.newPlayers.length ? ` Added to the Lists tab: ${out.newPlayers.map(esc).join(", ")}.` : ""}${out.dupes ? ` ${out.dupes} rows were already there.` : ""} Excel refreshes the stats tabs when you open it.`);
+        if (!confirm(`Add ${what} to the Data Entry tab and save ${file.name}?${out.newPlayers.length ? `\n\nAlso added to the Lists tab: ${out.newPlayers.join(", ")}.` : ""}${out.dupes ? `\n\n${out.dupes} rows are already in the workbook and are left alone.` : ""}\n\nClose the file in Excel first. Your browser will ask to let this site save changes to the file: choose Save changes / Allow.`)) return;
+        try {
+          if (handle.requestPermission && (await handle.requestPermission({ mode: "readwrite" })) !== "granted") throw new Error("the browser wasn't allowed to save changes to the file");
+          const w = await handle.createWritable(); await w.write(out.blob); await w.close(); saved = true;
+        } catch (e) { why = e.message || e.name || String(e); }
+      } else why = "this browser can't save over a file, only download one";
+      if (!saved) download(out.blob, file.name);
+      showResult(`Added ${what} to ${saved ? esc(file.name) + ", saved in place" : `a new copy of ${esc(file.name)} in your Downloads folder. It couldn't save over the original (${esc(why)}), so replace your old file with the downloaded one`}.${out.newPlayers.length ? ` Added to the Lists tab: ${out.newPlayers.map(esc).join(", ")}.` : ""}${out.dupes ? ` ${out.dupes} rows were already there.` : ""} Excel refreshes the stats tabs when you open it.`);
       toast("Workbook updated");
     } catch (e) { toast("Couldn't update the workbook: " + (e.message || e), true); }
     finally { busy = false; }
