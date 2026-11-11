@@ -261,6 +261,12 @@ tr.inc td { color: var(--bad); }
     </section>
 
     <section class="card" data-panel="cup" hidden>
+      <h2>Stats workbook</h2>
+      <p class="note">Adds this Cup's finished matches to the Data Entry tab of your Queen City Cup Stats workbook, one row per golfer per match.</p>
+      <div id="statsBody"></div>
+    </section>
+
+    <section class="card" data-panel="cup" hidden>
       <h2>Cup history</h2>
       <p class="note">Past results shown on the app's Cup history page. Cups run in the app show up there by themselves once every round is final; add earlier years here. Leave Winner blank to go by points. Add a league photo for any year, including Cups played in the app.</p>
       <div class="scroll"><table id="histTable"></table></div>
@@ -1027,9 +1033,11 @@ Nitin`;
 })();
 </script>
 <script src="cup.js?v=58"></script>
-<script src="admin-cup.js?v=60"></script>
+<script src="admin-cup.js?v=64"></script>
 <script src="admin-champions.js?v=58"></script>
 <script src="admin-awards.js?v=63"></script>
-<script src="admin-final.js?v=61"></script>
+<script src="admin-final.js?v=64"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="admin-cup-stats.js?v=64"></script>
 </body>
 </html>

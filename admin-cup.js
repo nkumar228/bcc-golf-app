@@ -4,6 +4,9 @@
   const F = window.Cup.FORMATS;
   const STATUS = { setup: "Setting up", lineups: "Lineups open", revealed: "Revealed · scoring", final: "Final" };
   let cups = [], cup = null, D = null;
+  // Other Cup panels (Final day, Stats sheet) register here to hear when a Cup loads
+  A.cupHooks = A.cupHooks || [];
+  A.cupLoaded = (c, d) => A.cupHooks.forEach(f => f(c, d));
   const pname = p => p ? `${p.last_name}, ${p.first_name}` : "?";
   const P = id => A.players.find(p => p.id === id);
   const sideName = id => D.sides.find(s => s.id === id)?.name || "?";
@@ -16,7 +19,7 @@
     cup = cups.find(c => c.id === (pick ?? cup?.id)) || cups[0] || null;
     $("cupPick").innerHTML = cups.map(c => `<option value="${c.id}"${c === cup ? " selected" : ""}>${esc(c.name)}${c.active ? " (in the app)" : ""}</option>`).join("") || "<option>No Cups yet</option>";
     $("cupPick").disabled = !cups.length;
-    if (!cup) { D = null; if (A.onCupLoaded) A.onCupLoaded(null, null); $("cupBody").innerHTML = '<p class="note">No Cup yet. Start one with the button above; it copies the sides from the last Cup.</p>'; return; }
+    if (!cup) { D = null; A.cupLoaded(null, null); $("cupBody").innerHTML = '<p class="note">No Cup yet. Start one with the button above; it copies the sides from the last Cup.</p>'; return; }
     await loadCup();
   }
   async function loadCup() {
@@ -32,7 +35,7 @@
     const tbc = new Map(); (tees || []).forEach(t => { if (!tbc.has(t.course_id)) tbc.set(t.course_id, []); tbc.get(t.course_id).push(t); });
     D = { sides: sides || [], cp: cp || [], rounds: rounds || [], entries: entries || [], subs: subs || [], ovr: ovr || [], scores: scores || [], avail: avail || [], tbc };
     render();
-    if (A.onCupLoaded) A.onCupLoaded(cup, D);
+    A.cupLoaded(cup, D);
   }
   $("cupPick").onchange = () => loadCups(+$("cupPick").value);
 
@@ -84,6 +87,7 @@
     }
     return out;
   }
+  A.cupMatchesOf = r => D ? matchesOf(r) : [];
   function totals() {
     const t = Object.fromEntries(D.sides.map(s => [s.id, 0]));
     D.rounds.filter(r => r.status === "revealed" || r.status === "final").forEach(r => matchesOf(r).forEach(x => Object.entries(x.pts.pts).forEach(([k, v]) => t[k] += v)));
