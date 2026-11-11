@@ -181,6 +181,9 @@ a.caplink { display: grid; gap: 2px; text-decoration: none; color: var(--ink); b
 .cm span { min-width: 0; overflow-wrap: anywhere; border-left: 4px solid var(--c); padding-left: 6px; }
 .cm span.r { text-align: right; border-left: 0; border-right: 4px solid var(--c); padding: 0 6px 0 0; }
 .cm span.lead { font-weight: 700; }
+/* Cup history: the year's winner filled in their team colour (Nitin 2026-11-11) */
+.cm span.won { background: var(--c); color: #fff; border-radius: 8px; padding: 5px 8px; border: 0; }
+.cm span.r.won { padding: 5px 8px; }
 .cm em { font-style: normal; font-size: 12px; color: var(--muted); text-align: center; max-width: 120px; }
 .cstat { font: 700 26px/1.1 var(--display); margin: 4px 0 6px; }
 /* Ryder Cup style board and match rows */
@@ -2503,7 +2506,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
 })();
 </script>
 <script src="cup.js?v=66"></script>
-<script src="cup-app.js?v=66"></script>
+<script src="cup-app.js?v=67"></script>
 <script>
 new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
