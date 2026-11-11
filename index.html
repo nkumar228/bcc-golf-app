@@ -1293,7 +1293,7 @@ the spirit, intent, and fairness of league competition.</p>
       row.className = "prow" + (pl.you ? " you" : "");
       row.innerHTML = `
         <div class="pname">${pl.name}${pl.you ? " (you)" : ""}
-          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · ${pl.inst && !pl.instDone ? "new leaguer: hcp set after 9 holes" : `hcp ${pl.h}${pl.inst ? " (instant)" : ""}`}${st > 0 ? ` · <span class="strokes">${"●".repeat(st)} gets ${st}</span>` : st < 0 ? ` · <span class="strokes">gives 1</span>` : ""}</small>${pl.subNote ? `<small class="subnote">${pl.subNote}</small>` : ""}</div>
+          <small>${TEAMS[pl.team]} · ${pl.tee || "Blue"} tees · ${pl.inst && !pl.instDone ? "new leaguer: hcp set after 9 holes" : `hcp ${pl.h}${pl.inst ? " (instant)" : ""}`}${st > 0 ? ` · <span class="strokes" title="Handicap stroke on this hole">${"●".repeat(st)}</span>` : ""}</small>${pl.subNote ? `<small class="subnote">${pl.subNote}</small>` : ""}</div>
         <div class="step" role="group" aria-label="Strokes for ${pl.name}">
           <button type="button" aria-label="One fewer">−</button>
           <output class="${cls(diff)}">${v}</output>
@@ -2316,7 +2316,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const { data: rows } = await sb.from("skins").select("event_id,game,details,winner").in("event_id", evs.map(e => e.id));
     // Winner pick list: every player, searchable as you type (Nitin 2026-11-10), so the Skins Champion award can count wins
     const { data: pls } = await sb.from("players").select("first_name,last_name,active").order("last_name").order("first_name");
-    PLAYERS = (pls || []).filter(p => p.active !== false).map(p => p.first_name + " " + p.last_name);
+    PLAYERS = (Array.isArray(pls) ? pls : []).filter(p => p.active !== false).map(p => p.first_name + " " + p.last_name);
     const byId = new Map(evs.map(e => [e.id, e]));
     const cur = (rows || []).find(r => r.event_id === ev.id);
     sk = cur ? { title: cur.game, note: cur.details || "", winner: cur.winner || "" } : { title: "Not posted yet", note: `Week ${ev.number} · ${dshort(ev.play_date)}`, winner: "", unposted: true };
