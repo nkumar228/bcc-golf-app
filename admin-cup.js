@@ -70,13 +70,12 @@
   // ---------- totals ----------
   function matchesOf(r) {
     const [sa, sb_] = D.sides; if (!sa || !sb_) return [];
-    const es = D.entries.filter(e => e.round_id === r.id), n = Math.max(0, ...es.map(e => e.slot));
+    const es = D.entries.filter(e => e.round_id === r.id), n = window.Cup.slotsFor(r, D.sides, D.cp, canPlay, Math.max(0, ...es.map(e => e.slot)));
     const sc = new Map(D.scores.filter(s => s.round_id === r.id).map(s => [`${s.side_id}:${s.player_id}:${s.hole}`, s.strokes]));
     const info = pid => { const p = P(pid), c = D.cp.find(x => x.player_id === pid); return { name: p ? p.last_name : "?", index: c?.handicap_index ?? A.hcps.get(pid)?.handicap_index ?? 0, tee: p?.default_tee || "Blue" }; };
     const out = [];
     for (let slot = 1; slot <= n; slot++) {
       const ea = es.find(e => e.side_id === sa.id && e.slot === slot && e.player_id), eb = es.find(e => e.side_id === sb_.id && e.slot === slot && e.player_id);
-      if (!ea && !eb) continue;
       const m = window.Cup.setupMatch(r, [{ id: sa.id, entry: ea }, { id: sb_.id, entry: eb }], info, D.tbc);
       const st = window.Cup.matchStatus(m, [sa.id, sb_.id], sc, sideName);
       const ov = D.ovr.find(o => o.round_id === r.id && o.slot === slot);
@@ -128,6 +127,7 @@
       </div>
       <div class="row" style="margin-bottom:8px">
         <label style="font-weight:600">Name</label><input id="cupName" value="${esc(cup.name)}" style="width:220px">
+        <label style="font-weight:600">Year</label><input id="cupYear" type="number" class="w-num" value="${cup.year}" title="The year this Cup counts as in the Cup history">
         <label style="font-weight:600">Defending side</label><select id="cupDef">${sideOpts(cup.defending_side_id, "Not set")}</select>
       </div>
       <div class="row" style="margin-bottom:8px">
@@ -267,6 +267,7 @@
       if (check(error, `${cup.name} deleted`)) { cup = null; loadCups(); }
     };
     $("cupName").onchange = async e => { const { error } = await sb.from("cups").update({ name: e.target.value.trim() }).eq("id", cup.id); if (check(error)) loadCups(cup.id); };
+    $("cupYear").onchange = async e => { const y = +e.target.value; if (!y) return; const { error } = await sb.from("cups").update({ year: y }).eq("id", cup.id); if (check(error, `Counts as ${y} in the Cup history`)) { cup.year = y; loadHistory(); } };
     $("cupDef").onchange = async e => { const { error } = await sb.from("cups").update({ defending_side_id: +e.target.value || null }).eq("id", cup.id); if (check(error)) cup.defending_side_id = +e.target.value || null; };
     body.querySelectorAll("[data-sf]").forEach(el => el.onchange = async () => {
       const id = +el.closest("tr").dataset.side, k = el.dataset.sf, v = k === "captain_id" ? (+el.value || null) : el.value;

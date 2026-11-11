@@ -91,14 +91,14 @@
     const left = n - played, leader = lead > 0 ? A : lead < 0 ? B : null, up = Math.abs(lead);
     let done = false, winner = null, text;
     // An empty matchup (one side has nobody in it) is halved automatically (Nitin 2026-11-11)
-    if (!hasA || !hasB) { done = true; text = hasA || hasB ? "Halved · empty match" : "No match"; }
+    if (!hasA || !hasB) { done = true; text = "Halved · empty match"; }
     else if (!n) text = "Set the course to score this match";
     else if (up > left) { done = true; winner = leader; text = left ? `${sideName(winner)} wins ${up}&${left}` : `${sideName(winner)} wins ${up} up`; }
     else if (!left) { done = true; text = "Halved"; }
     else if (!played) text = "Not started";
     else if (!up) text = `All square thru ${played}`;
     else text = `${sideName(leader)} ${up} up thru ${played}${up === left ? " (dormie)" : ""}`;
-    return { played, lead, leader, up, left, done, winner, halved: done && !winner && (hasA || hasB), empty: !hasA || !hasB, text, perHole };
+    return { played, lead, leader, up, left, done, winner, halved: done && !winner, empty: !hasA || !hasB, text, perHole };
   }
 
   // Points for a match: override first, then a finished match. Live matches give a projection.
@@ -113,5 +113,13 @@
     return { pts, live, final: false };
   }
 
-  window.Cup = { FORMATS, teeFor, courseHcp, courseHcpRaw, teamHcp, teamHcpRaw, strokeRanks, strokesOn, setupMatch, matchStatus, points };
+  // How many matches a round has, for the score: the bigger side's available players (subs only even up sides),
+  // in teams of two for team formats. Slots nobody filled count as halved matches (Nitin 2026-11-11).
+  function slotsFor(round, sides, cupPlayers, canPlay, filled) {
+    const pairs = (FORMATS[round.format] || FORMATS.singles).pairs;
+    const size = Math.max(0, ...sides.map(s => cupPlayers.filter(c => c.side_id === s.id && canPlay(round, s.id, c.player_id)).length));
+    return Math.max(filled, round.matches || Math.ceil(size / (pairs ? 2 : 1)));
+  }
+
+  window.Cup = { slotsFor, FORMATS, teeFor, courseHcp, courseHcpRaw, teamHcp, teamHcpRaw, strokeRanks, strokesOn, setupMatch, matchStatus, points };
 })();

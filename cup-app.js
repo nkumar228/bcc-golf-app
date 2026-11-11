@@ -92,13 +92,12 @@
   // ---------- matches ----------
   function matchesOf(r) {
     const [sa, sb_] = D.sides; if (!sa || !sb_) return [];
-    const es = D.entries.filter(e => e.round_id === r.id), n = Math.max(0, ...es.map(e => e.slot));
+    const es = D.entries.filter(e => e.round_id === r.id), n = C.slotsFor(r, D.sides, D.cp, canPlay, Math.max(0, ...es.map(e => e.slot)));
     const sc = new Map(D.scores.filter(s => s.round_id === r.id).map(s => [`${s.side_id}:${s.player_id}:${s.hole}`, s.strokes]));
     const info = pid => { const p = P(pid), c = D.cp.find(x => x.player_id === pid); return { name: short(p), index: c?.handicap_index ?? 0, tee: p?.default_tee || "Blue" }; };
     const out = [];
     for (let slot = 1; slot <= n; slot++) {
       const ea = es.find(e => e.side_id === sa.id && e.slot === slot && e.player_id), eb = es.find(e => e.side_id === sb_.id && e.slot === slot && e.player_id);
-      if (!ea && !eb) continue;
       const m = C.setupMatch(r, [{ id: sa.id, entry: ea }, { id: sb_.id, entry: eb }], info, D.tbc);
       const st = C.matchStatus(m, [sa.id, sb_.id], sc, sideName);
       const ov = D.ovr.find(o => o.round_id === r.id && o.slot === slot);
