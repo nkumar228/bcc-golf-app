@@ -162,7 +162,7 @@
     let big, small;
     if (m.ov) { big = halved ? "HALF" : "WON"; small = m.ov.note || "final"; }
     else if (!st.done && !st.played) { big = "–"; small = r.tee_time ? fmtTime(r.tee_time) : "not started"; }
-    else if (st.done) { big = halved ? "HALF" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = st.played || halved ? "final" : "forfeit"; }
+    else if (st.done) { big = halved ? "HALF" : st.left ? `${st.up}&${st.left}` : st.played ? `${st.up} UP` : "WON"; small = st.empty ? "empty match" : "final"; }
     else { big = st.up ? `${st.up} UP` : "AS"; small = `thru ${st.played}${st.up && st.up === st.left ? " · dormie" : ""}`; }
     const col = w ? side(w).color : "";
     const mine = [m.ea, m.eb].some(e => e && (e.player_id === D.me || e.partner_id === D.me));

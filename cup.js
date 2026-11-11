@@ -87,14 +87,15 @@
     }
     const left = n - played, leader = lead > 0 ? A : lead < 0 ? B : null, up = Math.abs(lead);
     let done = false, winner = null, text;
-    if (!hasA || !hasB) { done = true; winner = hasA ? A : hasB ? B : null; text = winner ? `${sideName(winner)} wins by forfeit` : "No match"; }
+    // An empty matchup (one side has nobody in it) is halved automatically (Nitin 2026-11-11)
+    if (!hasA || !hasB) { done = true; text = hasA || hasB ? "Halved · empty match" : "No match"; }
     else if (!n) text = "Set the course to score this match";
     else if (up > left) { done = true; winner = leader; text = left ? `${sideName(winner)} wins ${up}&${left}` : `${sideName(winner)} wins ${up} up`; }
     else if (!left) { done = true; text = "Halved"; }
     else if (!played) text = "Not started";
     else if (!up) text = `All square thru ${played}`;
     else text = `${sideName(leader)} ${up} up thru ${played}${up === left ? " (dormie)" : ""}`;
-    return { played, lead, leader, up, left, done, winner, halved: done && !winner && hasA && hasB, text, perHole };
+    return { played, lead, leader, up, left, done, winner, halved: done && !winner && (hasA || hasB), empty: !hasA || !hasB, text, perHole };
   }
 
   // Points for a match: override first, then a finished match. Live matches give a projection.

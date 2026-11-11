@@ -219,7 +219,9 @@
     const es = D.entries.filter(e => e.round_id === r.id && e.side_id === s.id);
     const n = Math.max(f.pairs ? Math.ceil(mine.length / 2) : mine.length, ...es.map(e => e.slot), 1);
     const subs = D.cp.filter(c => c.side_id == null && (canPlay(r, s.id, c.player_id) || inLineup.has(c.player_id))).map(c => P(c.player_id)).filter(Boolean).sort((a, b) => pname(a).localeCompare(pname(b)));
-    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(pname(p))}</option>`;
+    // A player already in this round's lineups shows greyed out, so nobody can be picked twice (Nitin 2026-11-11)
+    const used = new Set(D.entries.filter(e => e.round_id === r.id).flatMap(e => [e.player_id, e.partner_id]).filter(Boolean));
+    const o = (p, sel) => `<option value="${p.id}"${p.id === sel ? " selected" : used.has(p.id) ? " disabled" : ""}>${esc(pname(p))}${p.id !== sel && used.has(p.id) ? " (picked)" : ""}</option>`;
     const opt = sel => `<option value="">–</option>` + mine.map(p => o(p, sel)).join("") + (subs.length ? `<optgroup label="Subs">${subs.map(p => o(p, sel)).join("")}</optgroup>` : "");
     const locked = r.status === "revealed" || r.status === "final";
     return `<div class="box" data-side="${s.id}"><h4>${sideDot(s)}${esc(s.name)} ${r.blind ? "picks" : "lineup"} ${!r.blind ? `<span class="pill">${es.filter(e => e.player_id).length} picked</span>` : submitted ? '<span class="pill">Submitted</span>' : '<span class="pill warn">Not submitted</span>'}</h4>
@@ -341,6 +343,9 @@
         const sid = +sbox.dataset.side;
         sbox.querySelectorAll("[data-slot]").forEach(row => row.querySelectorAll("[data-e]").forEach(el => el.onchange = async () => {
           const slot = +row.dataset.slot, cur = D.entries.find(e => e.round_id === r.id && e.side_id === sid && e.slot === slot) || {};
+          const pick = +el.value || null, clash = pick && D.entries.find(e => e.round_id === r.id && (e.player_id === pick || e.partner_id === pick) && !(e.side_id === sid && e.slot === slot && cur[el.dataset.e] === pick))
+            || (pick && el.dataset.e === "partner_id" && cur.player_id === pick) || (pick && el.dataset.e === "player_id" && cur.partner_id === pick);
+          if (clash) { alert(`${pname(P(pick) || {})} is already in this round's lineups.`); loadCup(); return; }
           const rec = { round_id: r.id, side_id: sid, slot, player_id: cur.player_id ?? null, partner_id: cur.partner_id ?? null, [el.dataset.e]: +el.value || null };
           const res = !rec.player_id && !rec.partner_id ? await sb.from("cup_entries").delete().eq("round_id", r.id).eq("side_id", sid).eq("slot", slot)
             : await sb.from("cup_entries").upsert(rec, { onConflict: "round_id,side_id,slot" });
