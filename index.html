@@ -426,7 +426,10 @@ table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .gps-dist .mid b { font-size: 64px; }
 .gps-dist .plays { font-style: normal; font-size: 13px; font-weight: 600; color: var(--muted); min-height: 1.2em; }
 .gps-dist .mid .plays { font-size: 15px; color: var(--ink); }
-.plays-opt { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); justify-content: center; }
+.plays-opts { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 13.5px; color: var(--muted); }
+.plays-opt { display: flex; align-items: center; gap: 6px; }
+.wind-line { margin: 0; text-align: center; font-size: 13.5px; color: var(--ink); }
+.wind-line[hidden] { display: none; }
 .plays-opt input { width: 18px; height: 18px; accent-color: var(--green); margin: 0; }
 .gps-lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
 .gps-lock::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
@@ -1139,7 +1142,10 @@ the spirit, intent, and fairness of league competition.</p>
         <div class="mid"><small>Middle</small><b class="num" id="dM">—</b><i class="plays" id="pM"></i></div>
         <div><small>Back</small><b class="num" id="dB">—</b><i class="plays" id="pB"></i></div>
       </div>
-      <label class="plays-opt"><input type="checkbox" id="playsOn"> "Plays like" yardage for uphill/downhill</label>
+      <div class="plays-opts"><span>Plays like:</span>
+        <label class="plays-opt"><input type="checkbox" id="playsOn"> Elevation</label>
+        <label class="plays-opt"><input type="checkbox" id="windOn"> Wind</label></div>
+      <p class="wind-line" id="windLine" hidden></p>
       <p class="gps-msg" id="gpsMsg">Yardages to the green from where you stand.</p>
       <div class="gps-ask" id="gpsAskBox" hidden><p id="gpsAskMsg"></p><button class="btn" id="gpsAsk" type="button">Allow location</button></div>
     </div>
@@ -2430,13 +2436,23 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       const el = $(id), pl = $("p" + id.slice(1));
       if (fix && s[k]) {
         const d = Math.round(dist(fix, s[k])); el.textContent = d; el.classList.add("on");
-        const ge = playsOn ? elevOf(s[k]) : null;
-        // Plays like = distance + rise in yards (1 yard per 3 feet up, less going down)
-        pl.textContent = playsOn ? (ge != null && meElev != null ? `plays ${Math.round(d + (ge - meElev) / 3)}` + (k === "m" ? ` · ${ge - meElev >= 0 ? "↑" : "↓"}${Math.abs(Math.round(ge - meElev))} ft` : "") : elevDown ? "no elevation" : "…") : "";
+        // Plays like = distance + rise in yards (1 yard per 3 feet up or down) + wind
+        // (headwind adds 1% a mph, tailwind takes off 0.5% a mph; crosswind doesn't change the number)
+        const ge = playsOn ? elevOf(s[k]) : null, elevOk = !playsOn || (ge != null && meElev != null), windOk = !windOn || !!wind;
+        if (!playsOn && !windOn) pl.textContent = "";
+        else if (!elevOk || !windOk) pl.textContent = (playsOn && !elevOk && elevDown) || (windOn && !windOk && windDown) ? "not available" : "…";
+        else {
+          let v = d; const bits = [];
+          if (playsOn) { const dz = ge - meElev; v += dz / 3; if (k === "m") bits.push(`${dz >= 0 ? "↑" : "↓"}${Math.abs(Math.round(dz))} ft`); }
+          if (windOn) { const h = headwind(fix, s[k]); v += d * (h > 0 ? 0.01 : 0.005) * h; }
+          pl.textContent = `plays ${Math.round(v)}` + (bits.length ? " · " + bits.join(" · ") : "");
+        }
       }
       else { el.textContent = "—"; el.classList.remove("on"); pl.textContent = ""; }
     };
     set("dF", "f"); set("dM", "m"); set("dB", "b");
+    const tgt = s.m || s.f || s.b;
+    $("windLine").hidden = !(windOn && fix && tgt); if (windOn && fix && tgt) $("windLine").textContent = windText(tgt);
     const mapped = ["f", "m", "b"].filter(k => s[k]);
     if (!mapped.length) $("gpsMsg").textContent = `Hole ${holeNo()}'s green hasn't been mapped yet.`;
     else if (!fix) $("gpsMsg").textContent = "Yardages show once your location comes in.";
@@ -2467,6 +2483,29 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     if (!pending.has(k)) { pending.add(k); lookup(pt).then(v => { ELEV[k] = v; try { localStorage.setItem("bcc-elev", JSON.stringify(ELEV)); } catch (e) {} elevDown = false; render(); }).catch(() => { elevDown = true; render(); }).finally(() => pending.delete(k)); }
     return null;
   }
+  // Wind (Nitin 2026-11-11): current wind at Avon from Open-Meteo, refreshed every 10 minutes while the GPS tab is open.
+  let windOn = (() => { try { return localStorage.getItem("bcc-wind") === "1"; } catch (e) { return false; } })(), wind = null, windAt = 0, windDown = false, windBusy = false;
+  $("windOn").checked = windOn;
+  $("windOn").onchange = () => { windOn = $("windOn").checked; try { localStorage.setItem("bcc-wind", windOn ? "1" : "0"); } catch (e) {} getWind(); render(); };
+  const AVON = [39.1418, -84.4517];
+  function getWind() {
+    if (!windOn || windBusy || (wind && Date.now() - windAt < 600000)) return;
+    windBusy = true; const at = fix || AVON;
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${at[0].toFixed(3)}&longitude=${at[1].toFixed(3)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`)
+      .then(r => r.json()).then(j => { const c = j.current; if (!c || c.wind_speed_10m == null) throw 0; wind = { mph: +c.wind_speed_10m, from: +c.wind_direction_10m, gust: +c.wind_gusts_10m }; windAt = Date.now(); windDown = false; })
+      .catch(() => { windDown = true; }).finally(() => { windBusy = false; render(); });
+  }
+  setInterval(() => { if (location.hash === "#gps" && document.visibilityState === "visible") getWind(); }, 60000);
+  const bearing = ([la1, lo1], [la2, lo2]) => { const r = Math.PI / 180, y = Math.sin((lo2 - lo1) * r) * Math.cos(la2 * r), x = Math.cos(la1 * r) * Math.sin(la2 * r) - Math.sin(la1 * r) * Math.cos(la2 * r) * Math.cos((lo2 - lo1) * r); return (Math.atan2(y, x) / r + 360) % 360; };
+  // Headwind part of the wind along the shot, in mph (negative = helping)
+  const headwind = (from, to) => wind ? wind.mph * Math.cos((wind.from - bearing(from, to)) * Math.PI / 180) : 0;
+  function windText(to) {
+    if (!wind) return windDown ? "Wind not available right now." : "Getting the wind…";
+    const h = headwind(fix, to), x = wind.mph * Math.sin((wind.from - bearing(fix, to)) * Math.PI / 180);
+    const along = Math.abs(h) < 1 ? "" : h > 0 ? `${Math.round(h)} into you` : `${Math.round(-h)} helping`;
+    const cross = Math.abs(x) < 1 ? "" : `${Math.round(Math.abs(x))} ${x > 0 ? "left to right" : "right to left"}`;
+    return `💨 Wind ${Math.round(wind.mph)} mph${wind.gust > wind.mph + 4 ? ` (gusts ${Math.round(wind.gust)})` : ""}` + ((along || cross) ? ` · ${[along, cross].filter(Boolean).join(", ")}` : "");
+  }
   let meBusy = false;
   function myElev(force) {
     if (!playsOn || !fix || meBusy) return;
@@ -2491,7 +2530,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     $("gpsAcc").className = "gps-lock bad"; $("gpsAcc").textContent = "Not ready"; $("gpsAcc").title = "Finding your location";
     watch = navigator.geolocation.watchPosition(p => {
       fix = [p.coords.latitude, p.coords.longitude];
-      fix.acc = p.coords.accuracy * YD; $("gpsAskBox").hidden = true; myElev();
+      fix.acc = p.coords.accuracy * YD; $("gpsAskBox").hidden = true; myElev(); getWind();
       // Lock light (Nitin 2026-11-11): green Ready at 5 yds or better, yellow Wait for lock up to 10, red Not ready above
       const a = Math.round(fix.acc), lv = a <= 5 ? ["ok", "Ready"] : a <= 10 ? ["mid", "Wait for lock"] : ["bad", "Not ready"];
       $("gpsAcc").className = "gps-lock " + lv[0]; $("gpsAcc").textContent = lv[1]; $("gpsAcc").title = `Accuracy ± ${a} yds`;
