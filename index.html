@@ -421,6 +421,12 @@ table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .gps-dist small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .gps-dist b { font-size: 40px; color: var(--muted); }
 .gps-dist .mid b { font-size: 64px; }
+.gps-toggle { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.gps-toggle input { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 13px; background: var(--line); position: relative; flex: none; margin: 0; cursor: pointer; transition: background .15s; }
+.gps-toggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+.gps-toggle input:checked { background: var(--green); }
+.gps-toggle input:checked::after { left: 21px; }
+.gps-toggle small { display: block; color: var(--muted); font-size: 12.5px; }
 .gps-msg { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
 .scrollx { overflow-x: auto; }
 table.stand.wide { min-width: 520px; }
@@ -1125,7 +1131,7 @@ the spirit, intent, and fairness of league competition.</p>
         <div><small>Back</small><b class="num" id="dB">—</b></div>
       </div>
       <p class="gps-msg" id="gpsMsg">Yardages to the green from where you stand.</p>
-      <button class="btn" id="gpsStart" type="button">Turn on GPS</button>
+      <label class="gps-toggle"><input type="checkbox" id="gpsOn" role="switch"> <span><b>GPS</b> <small id="gpsOnNote">Off · turn on for yardages</small></span></label>
     </div>
 
     <div class="card pad map-tool" id="mapTool">
@@ -2425,9 +2431,27 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     $("mapTool").classList.toggle("admin-on", document.body.classList.contains("is-admin"));
   }
 
+  // GPS switch (Nitin 2026-11-11): players can turn it off to save battery; the choice is remembered on the phone.
+  // When on, location runs only while the GPS tab is open and the app is on screen.
+  const GPS_KEY = "bcc-gps-on";
+  let gpsOn = (() => { try { return localStorage.getItem(GPS_KEY) === "1"; } catch (e) { return false; } })();
+  function stop() {
+    if (watch !== null) { navigator.geolocation.clearWatch(watch); watch = null; }
+  }
+  function showSwitch() {
+    $("gpsOn").checked = gpsOn;
+    $("gpsOnNote").textContent = gpsOn ? "On · only while this tab is open" : "Off · turn on for yardages";
+    if (!gpsOn) { fix = null; $("gpsAcc").textContent = "GPS is off"; render(); }
+  }
+  $("gpsOn").onchange = () => {
+    gpsOn = $("gpsOn").checked;
+    try { localStorage.setItem(GPS_KEY, gpsOn ? "1" : "0"); } catch (e) {}
+    if (gpsOn) start(); else stop();
+    showSwitch();
+  };
   function start() {
     if (!("geolocation" in navigator)) { $("gpsAcc").textContent = "This phone can't share its location."; return; }
-    $("gpsStart").hidden = true;
+    if (!gpsOn || watch !== null) return;
     $("gpsAcc").textContent = "Finding you…";
     watch = navigator.geolocation.watchPosition(p => {
       fix = [p.coords.latitude, p.coords.longitude];
@@ -2436,17 +2460,20 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       render();
     }, err => {
       if (fix && err.code !== 1) return; // keep the last good fix through brief signal drops
-      $("gpsStart").hidden = false;
-      $("gpsAcc").textContent = err.code === 1 ? "Location is off for this app. Allow it in your phone's settings." : "Can't get a location right now.";
+      stop();
+      // Permission refused: flip the switch back off so it shows the truth
+      if (err.code === 1) { gpsOn = false; try { localStorage.setItem(GPS_KEY, "0"); } catch (e) {} showSwitch(); }
+      $("gpsAcc").textContent = err.code === 1 ? "Location isn't allowed for this app. Allow it in your phone's settings, then turn GPS on again." : "Can't get a location right now.";
     }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   }
-  $("gpsStart").onclick = start;
-  // If location was allowed before, start as soon as the GPS tab opens.
-  const autoStart = () => {
-    if (watch !== null || location.hash !== "#gps" || !navigator.permissions) return;
-    navigator.permissions.query({ name: "geolocation" }).then(r => { if (r.state === "granted" && watch === null) start(); }).catch(() => {});
-  };
-  window.addEventListener("hashchange", autoStart); autoStart();
+  // Start when the GPS tab opens (if the switch is on); stop when leaving it or when the app goes to the background.
+  const sync = () => { if (gpsOn && location.hash === "#gps" && document.visibilityState === "visible") start(); else stop(); };
+  window.addEventListener("hashchange", sync); document.addEventListener("visibilitychange", sync);
+  // Turning the switch on is what asks the phone for location permission (if it hasn't been given yet).
+  // No choice saved yet: on if the phone already allows location for the app, else off.
+  let saved = null; try { saved = localStorage.getItem(GPS_KEY); } catch (e) {}
+  showSwitch(); sync();
+  if (saved === null && navigator.permissions) navigator.permissions.query({ name: "geolocation" }).then(r => { if (r.state === "granted") { gpsOn = true; showSwitch(); sync(); } }).catch(() => {});
 
   document.querySelectorAll("[data-nine]").forEach(b => b.onclick = () => {
     nine = b.dataset.nine; idx = 0;
