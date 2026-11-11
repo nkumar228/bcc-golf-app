@@ -424,6 +424,11 @@ table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .gps-dist small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .gps-dist b { font-size: 40px; color: var(--muted); }
 .gps-dist .mid b { font-size: 64px; }
+.gps-lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.gps-lock::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.gps-lock.ok { background: #e3f5e6; color: #1b7a32; }
+.gps-lock.mid { background: #fff4d6; color: #8a6400; }
+.gps-lock.bad { background: #fde4e4; color: #b3141f; }
 .gps-ask { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
 .gps-ask[hidden] { display: none; }
 .gps-ask p { margin: 0; font-size: 14px; }
@@ -2447,16 +2452,18 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   function start() {
     if (!("geolocation" in navigator)) { $("gpsAcc").textContent = "This phone can't share its location."; return; }
     if (watch !== null) return;
-    $("gpsAcc").textContent = "Finding you…";
+    $("gpsAcc").className = "gps-lock bad"; $("gpsAcc").textContent = "Not ready"; $("gpsAcc").title = "Finding your location";
     watch = navigator.geolocation.watchPosition(p => {
       fix = [p.coords.latitude, p.coords.longitude];
       fix.acc = p.coords.accuracy * YD; $("gpsAskBox").hidden = true;
-      $("gpsAcc").textContent = `Accuracy ± ${Math.round(fix.acc)} yds`;
+      // Lock light (Nitin 2026-11-11): green Ready at 5 yds or better, yellow Wait for lock up to 10, red Not ready above
+      const a = Math.round(fix.acc), lv = a <= 5 ? ["ok", "Ready"] : a <= 10 ? ["mid", "Wait for lock"] : ["bad", "Not ready"];
+      $("gpsAcc").className = "gps-lock " + lv[0]; $("gpsAcc").textContent = lv[1]; $("gpsAcc").title = `Accuracy ± ${a} yds`;
       render();
     }, err => {
       if (fix && err.code !== 1) return; // keep the last good fix through brief signal drops
       stop();
-      $("gpsAcc").textContent = err.code === 1 ? "Location not allowed" : "Can't get a location right now.";
+      $("gpsAcc").className = "updated"; $("gpsAcc").textContent = err.code === 1 ? "Location not allowed" : "Can't get a location right now.";
       ask(err.code === 1);
     }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   }
