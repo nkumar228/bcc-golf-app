@@ -40,7 +40,10 @@
   // Build one match. side: {id, entry:{player_id, partner_id}} ; info(pid) -> {name, index, tee}
   // Returns balls: [{side, key, players:[pid], label, hcp, strokes}] and per-side handicap.
   function setupMatch(round, sides, info, teesByCourse) {
-    const f = FORMATS[round.format] || FORMATS.singles;
+    let f = FORMATS[round.format] || FORMATS.singles;
+    // Team round with just one golfer on each side (Nitin 2026-11-11): they skip the team game and play
+    // normal handicapped singles match play, each off their own course handicap.
+    if (f.pairs && sides.every(sd => sd.entry && sd.entry.player_id && !sd.entry.partner_id)) f = { ...FORMATS.singles, label: "Singles (one on each side)", solo: true };
     const balls = [], hcpOf = {};
     let holes = null;
     sides.forEach(sd => {

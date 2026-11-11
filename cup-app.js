@@ -254,12 +254,12 @@
     const { holes, balls } = m.m;
     const [sa, sb_] = D.sides;
     const order = [...balls.filter(b => b.side === sa.id), ...balls.filter(b => b.side === sb_.id)];
-    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 || F[r.format]?.w ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.length > 1 ? b.golfers.map(g => g.raw.toFixed(2)).join(" & ") : `${b.golfers[0].raw.toFixed(2)} counted twice`})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
+    const head = order.map(b => `<th style="--c:${esc(side(b.side).color)}" class="bh">${esc(b.label)}<small>${esc(b.golfers.map(g => g.tee?.name || "").filter(Boolean)[0] || "")} · ${b.golfers.length > 1 || m.m.format.w ? `team hcp ${b.raw.toFixed(2)} → ${b.hcp} (${b.golfers.length > 1 ? b.golfers.map(g => g.raw.toFixed(2)).join(" & ") : `${b.golfers[0].raw.toFixed(2)} counted twice`})` : `hcp ${b.raw.toFixed(2)} → ${b.hcp}`} · ${b.strokes ? `gets ${b.strokes}` : "plays off 0"}</small></th>`).join("");
     const rows = holes.map((h, i) => `<tr><td><b>${h.hole}</b><small>par ${h.par} · ${h.si}</small></td>${order.map(b => { const v = m.sc.get(`${b.side}:${b.key}:${h.hole}`); return `<td><input class="cin" inputmode="numeric" pattern="[0-9]*" maxlength="2" data-side="${b.side}" data-key="${b.key}" data-hole="${h.hole}" value="${v ?? ""}" aria-label="${esc(b.label)} hole ${h.hole}"${r.status !== "revealed" || !canEdit(b) ? " disabled" : ""}>${"<i class='sdot'></i>".repeat(b.perHole[i])}</td>`; }).join("")}<td class="hw">${m.st.perHole[i] == null ? "" : m.st.perHole[i] === 0 ? "–" : dot(side(m.st.perHole[i]))}</td></tr>`).join("");
-    const f = F[r.format];
+    const f = m.m.format;
     return `<div class="card pad"><div class="head"><p class="label">${picked ? `Match ${m.slot}` : "Your match"} · ${esc(r.name)}</p><span class="updated">${esc(f?.label || "")}</span></div>
       <div class="cstat" id="cupStat">${esc(m.st.text)}</div>
-      <p class="updated" style="margin:0 0 8px">${f?.ball === "one" ? "One score per side per hole." : "Each golfer's own score."} Dots show handicap strokes, off the lowest in the match. Saves as you type.</p>
+      <p class="updated" style="margin:0 0 8px">${f.solo ? "One golfer on each side, so this match is normal handicapped singles, not the team game. " : ""}${f?.ball === "one" ? "One score per side per hole." : "Each golfer's own score."} Dots show handicap strokes, off the lowest in the match. Saves as you type.</p>
       ${mySideId ? `<label class="row" style="gap:6px;margin:0 0 8px"><input type="checkbox" id="cupWhole"${wholeGroup ? " checked" : ""}> Score for the whole group</label>` : ""}
       <div class="gridwrap"><table class="csc" data-slot="${m.slot}" data-round="${r.id}"><thead><tr><th>Hole</th>${head}<th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }
