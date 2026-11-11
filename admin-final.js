@@ -91,5 +91,5 @@
     w.document.close();
   }
 
-  A.onCupLoaded = (c, d) => { cup = c; D = d; load(); };
+  (A.cupHooks = A.cupHooks || []).push((c, d) => { cup = c; D = d; load(); });
 })();
