@@ -424,6 +424,10 @@ table.stand { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .gps-dist small { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .gps-dist b { font-size: 40px; color: var(--muted); }
 .gps-dist .mid b { font-size: 64px; }
+.gps-dist .plays { font-style: normal; font-size: 13px; font-weight: 600; color: var(--muted); min-height: 1.2em; }
+.gps-dist .mid .plays { font-size: 15px; color: var(--ink); }
+.plays-opt { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); justify-content: center; }
+.plays-opt input { width: 18px; height: 18px; accent-color: var(--green); margin: 0; }
 .gps-lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
 .gps-lock::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 .gps-lock.ok { background: #e3f5e6; color: #1b7a32; }
@@ -1131,10 +1135,11 @@ the spirit, intent, and fairness of league competition.</p>
       <div class="gps-holes" id="gpsHoles" role="tablist" aria-label="Hole"></div>
       <div class="gps-hole"><span class="label" id="gpsHoleInfo"></span></div>
       <div class="gps-dist" aria-live="polite">
-        <div><small>Front</small><b class="num" id="dF">—</b></div>
-        <div class="mid"><small>Middle</small><b class="num" id="dM">—</b></div>
-        <div><small>Back</small><b class="num" id="dB">—</b></div>
+        <div><small>Front</small><b class="num" id="dF">—</b><i class="plays" id="pF"></i></div>
+        <div class="mid"><small>Middle</small><b class="num" id="dM">—</b><i class="plays" id="pM"></i></div>
+        <div><small>Back</small><b class="num" id="dB">—</b><i class="plays" id="pB"></i></div>
       </div>
+      <label class="plays-opt"><input type="checkbox" id="playsOn"> "Plays like" yardage for uphill/downhill</label>
       <p class="gps-msg" id="gpsMsg">Yardages to the green from where you stand.</p>
       <div class="gps-ask" id="gpsAskBox" hidden><p id="gpsAskMsg"></p><button class="btn" id="gpsAsk" type="button">Allow location</button></div>
     </div>
@@ -2422,9 +2427,14 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     $("gpsHoleInfo").textContent = `Hole ${holeNo()} · Par ${n.par[idx]} · ${n.yds[idx]} yds from the blues`;
     const s = spots(holeNo());
     const set = (id, k) => {
-      const el = $(id);
-      if (fix && s[k]) { el.textContent = Math.round(dist(fix, s[k])); el.classList.add("on"); }
-      else { el.textContent = "—"; el.classList.remove("on"); }
+      const el = $(id), pl = $("p" + id.slice(1));
+      if (fix && s[k]) {
+        const d = Math.round(dist(fix, s[k])); el.textContent = d; el.classList.add("on");
+        const ge = playsOn ? elevOf(s[k]) : null;
+        // Plays like = distance + rise in yards (1 yard per 3 feet up, less going down)
+        pl.textContent = playsOn ? (ge != null && meElev != null ? `plays ${Math.round(d + (ge - meElev) / 3)}` + (k === "m" ? ` · ${ge - meElev >= 0 ? "↑" : "↓"}${Math.abs(Math.round(ge - meElev))} ft` : "") : elevDown ? "no elevation" : "…") : "";
+      }
+      else { el.textContent = "—"; el.classList.remove("on"); pl.textContent = ""; }
     };
     set("dF", "f"); set("dM", "m"); set("dB", "b");
     const mapped = ["f", "m", "b"].filter(k => s[k]);
@@ -2438,6 +2448,32 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
 
   // GPS runs only while the GPS tab is open and the app is on screen, so it's light on battery (Nitin 2026-11-11: no switch).
   // If the phone hasn't allowed location, a button asks again and explains what to do.
+  // "Plays like" yardage (Nitin 2026-11-11): ground elevation from the USGS 3DEP survey (about 1 m detail)
+  // for where you stand and for each green spot. Phone GPS altitude is too rough for this. Off unless the player turns it on.
+  let playsOn = (() => { try { return localStorage.getItem("bcc-plays") === "1"; } catch (e) { return false; } })();
+  $("playsOn").checked = playsOn;
+  $("playsOn").onchange = () => { playsOn = $("playsOn").checked; try { localStorage.setItem("bcc-plays", playsOn ? "1" : "0"); } catch (e) {} if (playsOn) myElev(true); render(); };
+  const ELEV = (() => { try { return JSON.parse(localStorage.getItem("bcc-elev")) || {}; } catch (e) { return {}; } })();
+  const ek = ([la, lo]) => la.toFixed(5) + "," + lo.toFixed(5), pending = new Set();
+  let meElev = null, meAt = null, elevDown = false;
+  async function lookup(pt) {
+    const r = await fetch(`https://epqs.nationalmap.gov/v1/json?x=${pt[1]}&y=${pt[0]}&wkid=4326&units=Feet&includeDate=false`);
+    const j = await r.json(), v = +j.value;
+    if (!r.ok || !isFinite(v) || v < -1000) throw new Error("no elevation");
+    return v;
+  }
+  function elevOf(pt) {
+    const k = ek(pt); if (k in ELEV) return ELEV[k];
+    if (!pending.has(k)) { pending.add(k); lookup(pt).then(v => { ELEV[k] = v; try { localStorage.setItem("bcc-elev", JSON.stringify(ELEV)); } catch (e) {} elevDown = false; render(); }).catch(() => { elevDown = true; render(); }).finally(() => pending.delete(k)); }
+    return null;
+  }
+  let meBusy = false;
+  function myElev(force) {
+    if (!playsOn || !fix || meBusy) return;
+    if (!force && meAt && dist(meAt, fix) < 5) return; // look up again once you've moved 5 yards
+    meBusy = true; const at = [fix[0], fix[1]];
+    lookup(at).then(v => { meElev = v; meAt = at; elevDown = false; }).catch(() => { elevDown = true; }).finally(() => { meBusy = false; render(); });
+  }
   function stop() {
     if (watch !== null) { navigator.geolocation.clearWatch(watch); watch = null; }
   }
@@ -2455,7 +2491,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     $("gpsAcc").className = "gps-lock bad"; $("gpsAcc").textContent = "Not ready"; $("gpsAcc").title = "Finding your location";
     watch = navigator.geolocation.watchPosition(p => {
       fix = [p.coords.latitude, p.coords.longitude];
-      fix.acc = p.coords.accuracy * YD; $("gpsAskBox").hidden = true;
+      fix.acc = p.coords.accuracy * YD; $("gpsAskBox").hidden = true; myElev();
       // Lock light (Nitin 2026-11-11): green Ready at 5 yds or better, yellow Wait for lock up to 10, red Not ready above
       const a = Math.round(fix.acc), lv = a <= 5 ? ["ok", "Ready"] : a <= 10 ? ["mid", "Wait for lock"] : ["bad", "Not ready"];
       $("gpsAcc").className = "gps-lock " + lv[0]; $("gpsAcc").textContent = lv[1]; $("gpsAcc").title = `Accuracy ± ${a} yds`;
