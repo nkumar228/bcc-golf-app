@@ -1,0 +1,15 @@
+# Keeps the free Supabase project awake and saves a backup (Mondays and Thursdays).
+# The function only writes a backup into the private "backups" bucket; the key here is the public one the app already uses.
+name: Backup and keep-alive
+on:
+  schedule:
+    - cron: "17 9 * * 1,4"
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the backup function
+        run: |
+          curl -fsS -X POST "https://kgmshfggdsuipteowila.supabase.co/functions/v1/backup" \
+            -H "apikey: sb_publishable_rq9snVi9Hca4vEYc0dhZjQ_KQQXRs9o" -H "Content-Type: application/json" -d '{}'

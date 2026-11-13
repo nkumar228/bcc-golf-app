@@ -233,6 +233,11 @@ tr.inc td { color: var(--bad); }
     </section>
 
     <section class="card" data-panel="seasons" hidden>
+      <div class="box" style="margin-bottom:16px">
+        <h3 style="margin:0 0 6px;font-size:15px">Backups</h3>
+        <p class="note" style="margin:0 0 8px">Every Monday and Thursday the league data (players, rounds, results, Cup, awards and so on) is saved as a file here, and that also keeps the free database from pausing. The newest 26 are kept, about three months. <button class="btn secondary" type="button" id="bkNow" style="padding:4px 10px;font-size:13px">Back up now</button></p>
+        <div id="bkList" class="note" style="margin:0">Loading…</div>
+      </div>
       <h2>Seasons</h2>
       <p class="note">Each season keeps its own teams, schedule, tee sheets and results. Players and their rounds carry over, so handicaps continue from one season to the next. The app shows the current season.</p>
       <div class="scroll"><table id="seasonsTable"></table></div>
@@ -382,10 +387,28 @@ tr.inc td { color: var(--bad); }
       ({ data: members } = ids.length ? await sb.from("team_players").select("*").in("team_id", ids) : { data: [] });
     }
     renderPlayers(); renderTeams(); renderEvents(); renderTeeEvents(); renderTees(); renderSeason(); renderSeasons(); renderSlots(); renderWeekEvents();
-    renderWelcome();
+    renderWelcome(); loadBackups();
     if (window.BCCAdmin.onLoad) window.BCCAdmin.onLoad();
   }
   $("seasonPick").onchange = () => loadAll(+$("seasonPick").value);
+  // Backups (Nitin 2026-11-13): files made by the "backup" edge function in the private backups bucket
+  async function loadBackups() {
+    const { data, error } = await sb.storage.from("backups").list("", { limit: 100, sortBy: { column: "name", order: "desc" } });
+    const files = (data || []).filter(f => f.name.endsWith(".json"));
+    $("bkList").innerHTML = error ? "Couldn't load the backups." : !files.length ? "No backups yet." :
+      files.map(f => `<div class="row" style="gap:10px"><span>${esc(f.name.replace("bcc-golf-", "").replace(".json", ""))}</span><span>${Math.round((f.metadata?.size || 0) / 1024)} KB</span><button class="btn secondary" type="button" data-bk="${esc(f.name)}" style="padding:3px 10px;font-size:13px">Download</button></div>`).join("");
+    $("bkList").querySelectorAll("[data-bk]").forEach(b => b.onclick = async () => {
+      const { data: blob, error: e } = await sb.storage.from("backups").download(b.dataset.bk); if (!check(e, "")) return;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = b.dataset.bk; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    });
+  }
+  $("bkNow").onclick = async () => {
+    $("bkNow").disabled = true;
+    const { data, error } = await sb.functions.invoke("backup", { body: {} });
+    $("bkNow").disabled = false;
+    if (check(error, data?.skipped ? "Already backed up today" : "Backup saved")) loadBackups();
+  };
+
   const teamOf = pid => { const m = members.find(m => m.player_id === pid); return m && teams.find(t => t.id === m.team_id); };
   const pname = p => `${p.last_name}, ${p.first_name}`;
 
