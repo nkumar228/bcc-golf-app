@@ -394,7 +394,7 @@ tr.inc td { color: var(--bad); }
   // Backups (Nitin 2026-11-13): files made by the "backup" edge function in the private backups bucket
   async function loadBackups() {
     const { data, error } = await sb.storage.from("backups").list("", { limit: 100, sortBy: { column: "name", order: "desc" } });
-    const files = (data || []).filter(f => f.name.endsWith(".json"));
+    const files = (Array.isArray(data) ? data : []).filter(f => (f.name || "").endsWith(".json"));
     $("bkList").innerHTML = error ? "Couldn't load the backups." : !files.length ? "No backups yet." :
       files.map(f => `<div class="row" style="gap:10px"><span>${esc(f.name.replace("bcc-golf-", "").replace(".json", ""))}</span><span>${Math.round((f.metadata?.size || 0) / 1024)} KB</span><button class="btn secondary" type="button" data-bk="${esc(f.name)}" style="padding:3px 10px;font-size:13px">Download</button></div>`).join("");
     $("bkList").querySelectorAll("[data-bk]").forEach(b => b.onclick = async () => {
