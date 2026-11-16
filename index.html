@@ -564,6 +564,14 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .gps-map .seg button[aria-pressed="true"] { background: #fff; color: #000; }
 .map-chip { border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.6); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
 .map-chip[hidden] { display: none; }
+/* Front / middle / back on the photo, upper right (Nitin 2026-11-16): back on top, like looking up the hole */
+.gps-map .gps-dist { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column-reverse; gap: 2px; min-width: 78px; padding: 6px 10px 7px; border-radius: 12px; background: rgba(0,0,0,.62); color: #fff; pointer-events: none; }
+.gps-map .gps-dist div { display: grid; justify-items: center; line-height: 1; }
+.gps-map .gps-dist small { font-size: 9.5px; color: rgba(255,255,255,.72); letter-spacing: .1em; margin-bottom: 1px; }
+.gps-map .gps-dist b, .gps-map .gps-dist b.on { font-size: 24px; color: #fff; }
+.gps-map .gps-dist .mid { padding: 3px 0; border-top: 1px solid rgba(255,255,255,.2); border-bottom: 1px solid rgba(255,255,255,.2); }
+.gps-map .gps-dist .mid b, .gps-map .gps-dist .mid b.on { font-size: 40px; color: #fff; }
+.gps-map .gps-dist .plays, .gps-map .gps-dist .mid .plays { font-size: 10.5px; color: #ffd76a; min-height: 0; margin-top: 1px; }
 .gps-map-tools { position: absolute; right: 8px; bottom: 44px; display: grid; gap: 6px; justify-items: end; }
 .gps-map-note { margin: 4px 16px 0; font-size: 11px; color: var(--muted); text-align: right; min-height: 1.2em; }
 .map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -1155,9 +1163,14 @@ the spirit, intent, and fairness of league competition.</p>
             <button type="button" data-mapmode="hole" aria-pressed="true">Hole</button>
             <button type="button" data-mapmode="green" aria-pressed="false">Green</button>
           </div>
-          <button class="map-chip" type="button" id="gpsPhoto">Summer photo</button>
+        </div>
+        <div class="gps-dist" aria-live="polite">
+          <div><small>Front</small><b class="num" id="dF">—</b><i class="plays" id="pF"></i></div>
+          <div class="mid"><small>Middle</small><b class="num" id="dM">—</b><i class="plays" id="pM"></i></div>
+          <div><small>Back</small><b class="num" id="dB">—</b><i class="plays" id="pB"></i></div>
         </div>
         <div class="gps-map-tools">
+          <button class="map-chip" type="button" id="gpsPhoto">Summer photo</button>
           <button class="map-chip" type="button" id="gpsMapClear" hidden>✕ Clear</button>
           <button class="map-chip" type="button" id="edgeUndo" hidden>Undo point</button>
           <button class="map-chip" type="button" id="edgeCancel" hidden>Cancel</button>
@@ -1165,11 +1178,6 @@ the spirit, intent, and fairness of league competition.</p>
           <button class="map-chip" type="button" id="gpsMapFit">Re-center</button>
         </div>
         <p class="gps-map-note" id="gpsMapNote"></p>
-      </div>
-      <div class="gps-dist" aria-live="polite">
-        <div><small>Front</small><b class="num" id="dF">—</b><i class="plays" id="pF"></i></div>
-        <div class="mid"><small>Middle</small><b class="num" id="dM">—</b><i class="plays" id="pM"></i></div>
-        <div><small>Back</small><b class="num" id="dB">—</b><i class="plays" id="pB"></i></div>
       </div>
       <div class="plays-opts"><span>Plays like:</span>
         <label class="plays-opt"><input type="checkbox" id="playsOn"> Elevation</label>
@@ -2547,7 +2555,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   $("windOn").onchange = () => { windOn = $("windOn").checked; try { localStorage.setItem("bcc-wind", windOn ? "1" : "0"); } catch (e) {} getWind(); render(); };
   const AVON = [39.1612, -84.4780];
   function getWind() {
-    if (!windOn || windBusy || (wind && Date.now() - windAt < 600000)) return;
+    if (windBusy || (wind && Date.now() - windAt < 600000)) return; // fetched even with Wind unticked, for the map's wind arrow
     windBusy = true; const at = fix || AVON;
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${at[0].toFixed(3)}&longitude=${at[1].toFixed(3)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`)
       .then(r => r.json()).then(j => { const c = j.current; if (!c || c.wind_speed_10m == null) throw 0; wind = { mph: +c.wind_speed_10m, from: +c.wind_direction_10m, gust: +c.wind_gusts_10m }; windAt = Date.now(); windDown = false; })
@@ -2601,7 +2609,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   }
   // Start when the GPS tab opens (if the switch is on); stop when leaving it or when the app goes to the background.
-  const sync = () => { if (location.hash === "#gps" && document.visibilityState === "visible") start(); else stop(); };
+  const sync = () => { if (location.hash === "#gps" && document.visibilityState === "visible") { start(); getWind(); } else stop(); };
   window.addEventListener("hashchange", sync); document.addEventListener("visibilitychange", sync);
   sync();
 
@@ -2646,6 +2654,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     yds: h => NINES[h >= 10 ? "B" : "F"].yds[(h - 1) % 9],
     // Admins set the blue tee by tapping the map; saved for everyone.
     fb: (h, from) => lineFB(spots(h), from),
+    wind: () => wind,
     // Admins trace the green's edge on the map; saved for everyone.
     saveOutline(h, pts) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { o: pts }); save(); render(); return; }
@@ -2666,7 +2675,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=2"></script>
+<script src="gps-map.js?v=3"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>

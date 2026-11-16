@@ -189,26 +189,6 @@
     ctx.save(); ctx.imageSmoothingEnabled = true;
     ctx.drawImage(img, cw[0] - O[0] - (half + 0.5) * px, cw[1] - O[1] - (half + 0.5) * px, n * px, n * px);
     ctx.restore();
-    // Contour lines every 3 cm (about 1¼ in) inside the green, so you can see the shape
-    ctx.save();
-    sh.path(); ctx.clip();
-    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1 / view.k;
-    const step = 0.03, P = (r, c) => [cw[0] - O[0] + (c - half) * px, cw[1] - O[1] + (r - half) * px];
-    ctx.beginPath();
-    for (let r = 0; r < n - 1; r++) for (let c = 0; c < n - 1; c++) {
-      const v = [S.sm[r * n + c], S.sm[r * n + c + 1], S.sm[(r + 1) * n + c + 1], S.sm[(r + 1) * n + c]];
-      const lo = Math.ceil(Math.min(...v) / step), hi = Math.floor(Math.max(...v) / step);
-      for (let L = lo; L <= hi; L++) {
-        const lv = L * step, pts = [];
-        const E = [[0, 1, [r, c], [r, c + 1]], [1, 2, [r, c + 1], [r + 1, c + 1]], [2, 3, [r + 1, c + 1], [r + 1, c]], [3, 0, [r + 1, c], [r, c]]];
-        for (const [a, b, pa, pb] of E) {
-          if ((v[a] - lv) * (v[b] - lv) < 0) { const t = (lv - v[a]) / (v[b] - v[a]); pts.push(P(pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t)); }
-        }
-        if (pts.length >= 2) { ctx.moveTo(...pts[0]); ctx.lineTo(...pts[1]); }
-        if (pts.length === 4) { ctx.moveTo(...pts[2]); ctx.lineTo(...pts[3]); }
-      }
-    }
-    ctx.stroke(); ctx.restore();
     // Arrows every 3 m, pointing downhill, longer = steeper
     const arrows = [];
     for (let r = 1; r < n - 1; r += 3) for (let c = 1; c < n - 1; c += 3) {
@@ -225,14 +205,13 @@
     const cr = Math.cos(view.r), sr = Math.sin(view.r);
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (const a of arrows) {
-      const ux = a.dx * cr - a.dy * sr, uy = a.dx * sr + a.dy * cr, L = Math.min(20, 7 + a.pct * 3);
+      // Subtle (Nitin 2026-11-16): thin, see-through, small heads; still longer where it's steeper
+      const ux = a.dx * cr - a.dy * sr, uy = a.dx * sr + a.dy * cr, L = Math.min(14, 5 + a.pct * 2);
       const x0 = a.p[0] - ux * L / 2, y0 = a.p[1] - uy * L / 2, x1 = a.p[0] + ux * L / 2, y1 = a.p[1] + uy * L / 2;
-      for (const [w, col] of [[3.5, "rgba(0,0,0,.55)"], [1.6, "#fff"]]) {
-        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath();
-        ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-        ctx.moveTo(x1 - ux * 4 - uy * 3, y1 - uy * 4 + ux * 3); ctx.lineTo(x1, y1); ctx.lineTo(x1 - ux * 4 + uy * 3, y1 - uy * 4 - ux * 3);
-        ctx.stroke();
-      }
+      ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.1; ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.moveTo(x1 - ux * 3 - uy * 2.2, y1 - uy * 3 + ux * 2.2); ctx.lineTo(x1, y1); ctx.lineTo(x1 - ux * 3 + uy * 2.2, y1 - uy * 3 - ux * 2.2);
+      ctx.stroke();
     }
   }
   // Fall at a spot on the green, said from where you're looking (bottom of the screen = front of the green).
@@ -248,6 +227,22 @@
     return { pct, text: `Falls ${pct.toFixed(1)}% toward ${dirs[Math.round(ang / 45) % 8]}` };
   }
 
+  // Wind arrow (Nitin 2026-11-16): points the way the wind is blowing, turned with the map, speed underneath.
+  function windBadge(sz) {
+    const w = G.wind && G.wind(); if (!w) return;
+    const c = [34, 88], to = (w.from + 180) * Math.PI / 180;
+    const vx = Math.sin(to), vy = -Math.cos(to); // world: x east, y south
+    const ux = vx * Math.cos(view.r) - vy * Math.sin(view.r), uy = vx * Math.sin(view.r) + vy * Math.cos(view.r);
+    dot(c, 24, "rgba(0,0,0,.6)", "rgba(255,255,255,.35)");
+    if (w.mph >= 1) {
+      const L = 13, x0 = c[0] - ux * L, y0 = c[1] - uy * L, x1 = c[0] + ux * L, y1 = c[1] + uy * L;
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.moveTo(x1 - ux * 7 - uy * 5, y1 - uy * 7 + ux * 5); ctx.lineTo(x1, y1); ctx.lineTo(x1 - ux * 7 + uy * 5, y1 - uy * 7 - ux * 5);
+      ctx.stroke();
+    }
+    pill([c[0], c[1] + 36], w.mph < 1 ? "Calm" : `${Math.round(w.mph)} mph`);
+  }
   // Drawing helpers
   function dot(p, r, fill, stroke) { ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke(); } }
   function pill(p, text, opts = {}) {
@@ -281,7 +276,6 @@
     drawTiles(sz);
     let arrows = null;
     if (mode === "green" && !edge) arrows = drawSlopes(h, s);
-    if (s.o && !edge) { shape(s).path(); ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1.5 / view.k; ctx.stroke(); }
     ctx.restore();
     if (arrows) drawArrows(arrows);
 
@@ -320,6 +314,7 @@
       else if (DEM) pill([sz.w / 2, sz.h - 22], "Tap the green to read the slope");
     } else if (!target) pill([sz.w / 2, sz.h - 22], "Tap the map for yardages");
     else pill([sz.w / 2, sz.h - 22], "Tap again to move · ✕ to clear");
+    windBadge(sz);
     if (teeMode) pill([sz.w / 2, 22], "Tap where the blue tee is", { bg: "#1e5ac8" });
     if (edge) {
       const pts = edge.map(S);
