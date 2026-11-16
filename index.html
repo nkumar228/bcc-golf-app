@@ -555,6 +555,17 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .gps-holes button[aria-current="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .gps-dist b.on { color: var(--ink); }
 .gps-dist .mid b.on { color: var(--green); }
+.gps-map { position: relative; margin: 0 -16px; }
+.gps-map canvas { display: block; width: 100%; height: min(62vh, 560px); min-height: 340px; touch-action: none; background: #28362c; cursor: crosshair; }
+.gps-map-bar { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; gap: 6px; pointer-events: none; }
+.gps-map-bar > * { pointer-events: auto; }
+.gps-map .seg { background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.35); }
+.gps-map .seg button { color: #fff; font-weight: 600; padding: 6px 14px; }
+.gps-map .seg button[aria-pressed="true"] { background: #fff; color: #000; }
+.map-chip { border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.6); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
+.map-chip[hidden] { display: none; }
+.gps-map-tools { position: absolute; right: 8px; bottom: 44px; display: grid; gap: 6px; justify-items: end; }
+.gps-map-note { margin: 4px 16px 0; font-size: 11px; color: var(--muted); text-align: right; min-height: 1.2em; }
 .map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .map-tool:not(.admin-on) { display: none; }
 </style>
@@ -1137,6 +1148,21 @@ the spirit, intent, and fairness of league competition.</p>
       </div>
       <div class="gps-holes" id="gpsHoles" role="tablist" aria-label="Hole"></div>
       <div class="gps-hole"><span class="label" id="gpsHoleInfo"></span></div>
+      <div class="gps-map">
+        <canvas id="gpsMap" aria-label="Map of the hole. Tap for yardages."></canvas>
+        <div class="gps-map-bar">
+          <div class="seg" role="group" aria-label="Map view">
+            <button type="button" data-mapmode="hole" aria-pressed="true">Hole</button>
+            <button type="button" data-mapmode="green" aria-pressed="false">Green</button>
+          </div>
+          <button class="map-chip" type="button" id="gpsPhoto">Summer photo</button>
+        </div>
+        <div class="gps-map-tools">
+          <button class="map-chip" type="button" id="gpsMapClear" hidden>✕ Clear</button>
+          <button class="map-chip" type="button" id="gpsMapFit">Re-center</button>
+        </div>
+        <p class="gps-map-note" id="gpsMapNote"></p>
+      </div>
       <div class="gps-dist" aria-live="polite">
         <div><small>Front</small><b class="num" id="dF">—</b><i class="plays" id="pF"></i></div>
         <div class="mid"><small>Middle</small><b class="num" id="dM">—</b><i class="plays" id="pM"></i></div>
@@ -1157,6 +1183,9 @@ the spirit, intent, and fairness of league competition.</p>
         <button class="btn small secondary" type="button" data-set="f">Set front</button>
         <button class="btn small secondary" type="button" data-set="m">Set middle</button>
         <button class="btn small secondary" type="button" data-set="b">Set back</button>
+      </div>
+      <div class="map-btns" style="margin-top:10px">
+        <button class="btn small secondary" type="button" id="mapSetTee">Set blue tee on the map</button>
       </div>
       <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
       <div class="map-btns" style="margin-top:10px">
@@ -2395,6 +2424,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       if (g.front_lat != null) o.f = [g.front_lat, g.front_lon];
       if (g.mid_lat != null) o.m = [g.mid_lat, g.mid_lon];
       if (g.back_lat != null) o.b = [g.back_lat, g.back_lon];
+      if (g.tee_lat != null) o.t = [g.tee_lat, g.tee_lon];
       GREENS[g.hole] = o;
     });
     render();
@@ -2460,6 +2490,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const names = { f: "front", m: "middle", b: "back" };
     $("mapStatus").textContent = `Hole ${holeNo()}: ` + (mapped.length ? `${mapped.map(k => names[k]).join(", ")} saved` : "nothing saved yet") + ".";
     $("mapTool").classList.toggle("admin-on", document.body.classList.contains("is-admin"));
+    if (window.GPSMap) GPSMap.update();
   }
 
   // GPS runs only while the GPS tab is open and the app is on screen, so it's light on battery (Nitin 2026-11-11: no switch).
@@ -2487,7 +2518,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   let windOn = (() => { try { return localStorage.getItem("bcc-wind") === "1"; } catch (e) { return false; } })(), wind = null, windAt = 0, windDown = false, windBusy = false;
   $("windOn").checked = windOn;
   $("windOn").onchange = () => { windOn = $("windOn").checked; try { localStorage.setItem("bcc-wind", windOn ? "1" : "0"); } catch (e) {} getWind(); render(); };
-  const AVON = [39.1418, -84.4517];
+  const AVON = [39.1612, -84.4780];
   function getWind() {
     if (!windOn || windBusy || (wind && Date.now() - windAt < 600000)) return;
     windBusy = true; const at = fix || AVON;
@@ -2582,11 +2613,25 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     } catch (e) {}
   };
 
+  // Used by the hole map (gps-map.js)
+  window.GPS = {
+    hole: holeNo, spots, dist, fix: () => fix,
+    yds: h => NINES[h >= 10 ? "B" : "F"].yds[(h - 1) % 9],
+    // Admins set the blue tee by tapping the map; saved for everyone.
+    saveTee(h, spot) {
+      if (!shared()) { local[h] = Object.assign({}, local[h], { t: spot }); save(); render(); return; }
+      GREENS[h] = Object.assign({}, GREENS[h], { t: spot }); render();
+      BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, tee_lat: spot[0], tee_lon: spot[1], updated_at: new Date().toISOString() })
+        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save the tee. Check your signal and try again." : `Hole ${h}: blue tee saved for everyone.`; });
+    }
+  };
+
   // Re-check admin state when the GPS tab opens.
   window.addEventListener("hashchange", () => { if (location.hash === "#gps") render(); });
   render(); loadShared();
 })();
 </script>
+<script src="gps-map.js?v=1"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>
