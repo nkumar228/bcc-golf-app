@@ -1159,6 +1159,9 @@ the spirit, intent, and fairness of league competition.</p>
         </div>
         <div class="gps-map-tools">
           <button class="map-chip" type="button" id="gpsMapClear" hidden>✕ Clear</button>
+          <button class="map-chip" type="button" id="edgeUndo" hidden>Undo point</button>
+          <button class="map-chip" type="button" id="edgeCancel" hidden>Cancel</button>
+          <button class="map-chip" type="button" id="edgeSave" hidden style="background:#1b7a32">Save edge</button>
           <button class="map-chip" type="button" id="gpsMapFit">Re-center</button>
         </div>
         <p class="gps-map-note" id="gpsMapNote"></p>
@@ -1186,6 +1189,7 @@ the spirit, intent, and fairness of league competition.</p>
       </div>
       <div class="map-btns" style="margin-top:10px">
         <button class="btn small secondary" type="button" id="mapSetTee">Set blue tee on the map</button>
+        <button class="btn small secondary" type="button" id="mapTraceEdge">Trace green edge on the map</button>
       </div>
       <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
       <div class="map-btns" style="margin-top:10px">
@@ -2425,12 +2429,35 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       if (g.mid_lat != null) o.m = [g.mid_lat, g.mid_lon];
       if (g.back_lat != null) o.b = [g.back_lat, g.back_lon];
       if (g.tee_lat != null) o.t = [g.tee_lat, g.tee_lon];
+      if (Array.isArray(g.outline) && g.outline.length >= 3) o.o = g.outline;
       GREENS[g.hole] = o;
     });
     render();
   }
   window.addEventListener("bcc-session", loadShared);
   const spots = h => Object.assign({}, GREENS[h] || {}, local[h] || {});
+  // Front and back along your line (Nitin 2026-11-16): once an admin has traced the green's edge on the map,
+  // front and back are where the line from you through the middle crosses that edge, so they follow your angle.
+  // Without a traced edge, the marked front and back spots are used.
+  function lineFB(s, from) {
+    const o = s.o, c = s.m;
+    if (!o || !c || !from) return null;
+    const k = 111320 * Math.cos(c[0] * Math.PI / 180), xy = p => [(p[1] - c[1]) * k, (p[0] - c[0]) * 111320];
+    const [fx, fy] = xy(from), L = Math.hypot(fx, fy); if (L < 0.5) return null;
+    const dx = -fx / L, dy = -fy / L; // direction of play, through the middle
+    const ts = [];
+    for (let i = 0; i < o.length; i++) {
+      const [ax, ay] = xy(o[i]), [bx, by] = xy(o[(i + 1) % o.length]), ex = bx - ax, ey = by - ay;
+      const den = dx * ey - dy * ex; if (Math.abs(den) < 1e-9) continue;
+      const t = (ax * ey - ay * ex) / den, u = (ax * dy - ay * dx) / den; // t along the line from the middle, u along the edge
+      if (u >= 0 && u <= 1) ts.push(t);
+    }
+    const back = ts.filter(t => t > 0), front = ts.filter(t => t < 0);
+    if (!back.length || !front.length) return null;
+    const at = t => [c[0] + dy * t / 111320, c[1] + dx * t / k];
+    return { f: at(Math.min(...front)), b: at(Math.max(...back)) }; // first edge you reach, last edge before you're off
+  }
+  const spotsFrom = (h, from) => { const s = spots(h), fb = lineFB(s, from); return fb ? Object.assign({}, s, fb, { line: true }) : s; };
   let nine = "F", idx = 0, fix = null, watch = null;
   const holeNo = () => NINES[nine].first + idx;
 
@@ -2461,14 +2488,14 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     renderHoles();
     const n = NINES[nine];
     $("gpsHoleInfo").textContent = `Hole ${holeNo()} · Par ${n.par[idx]} · ${n.yds[idx]} yds from the blues`;
-    const s = spots(holeNo());
+    const s = spotsFrom(holeNo(), fix);
     const set = (id, k) => {
       const el = $(id), pl = $("p" + id.slice(1));
       if (fix && s[k]) {
         const d = Math.round(dist(fix, s[k])); el.textContent = d; el.classList.add("on");
         // Plays like = distance + rise in yards (1 yard per 3 feet up or down) + wind
         // (headwind adds 1% a mph, tailwind takes off 0.5% a mph; crosswind doesn't change the number)
-        const ge = playsOn ? elevOf(s[k]) : null, elevOk = !playsOn || (ge != null && meElev != null), windOk = !windOn || !!wind;
+        const ge = playsOn ? elevOf(s.line ? s.m : s[k]) : null, elevOk = !playsOn || (ge != null && meElev != null), windOk = !windOn || !!wind;
         if (!playsOn && !windOn) pl.textContent = "";
         else if (!elevOk || !windOk) pl.textContent = (playsOn && !elevOk && elevDown) || (windOn && !windOk && windDown) ? "not available" : "…";
         else {
@@ -2618,6 +2645,14 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     hole: holeNo, spots, dist, fix: () => fix,
     yds: h => NINES[h >= 10 ? "B" : "F"].yds[(h - 1) % 9],
     // Admins set the blue tee by tapping the map; saved for everyone.
+    fb: (h, from) => lineFB(spots(h), from),
+    // Admins trace the green's edge on the map; saved for everyone.
+    saveOutline(h, pts) {
+      if (!shared()) { local[h] = Object.assign({}, local[h], { o: pts }); save(); render(); return; }
+      GREENS[h] = Object.assign({}, GREENS[h], { o: pts }); render();
+      BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, outline: pts, updated_at: new Date().toISOString() })
+        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save the green's edge. Check your signal and try again." : `Hole ${h}: green edge saved for everyone.`; });
+    },
     saveTee(h, spot) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { t: spot }); save(); render(); return; }
       GREENS[h] = Object.assign({}, GREENS[h], { t: spot }); render();
@@ -2631,7 +2666,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=1"></script>
+<script src="gps-map.js?v=2"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>

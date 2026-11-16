@@ -23,7 +23,8 @@ Sign-in is a demo: any email and an 8+ character password work, and you pick Adm
 2. Pick the nine and hole, stand on the front edge of the green, wait for accuracy under about 5 yards, and tap "Set front". Do the same for middle and back.
 3. When finished, tap "Share green data" and send the text over so the greens can be built in for everyone.
 4. Blue tees: tap "Set blue tee on the map", then tap the tee box on the photo. Until a tee is set, the app guesses it from the yardage.
-5. If a green's middle spot moves, rebuild the slope data: `python3 tools/green_slopes.py greens.json` (see the script for the file format).
+5. Green edges: tap "Trace green edge on the map", tap your way around the edge of the green on the photo, then "Save edge". After that, front and back follow each player's line through the middle of the green instead of the fixed front and back marks. The slope colours use the traced edge too.
+6. If a green's middle spot moves, rebuild the slope data: `python3 tools/green_slopes.py greens.json` (see the script for the file format).
 
 ## Files
 
