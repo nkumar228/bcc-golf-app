@@ -22,7 +22,7 @@
 
   const cv = $("gpsMap"), ctx = cv.getContext("2d");
   let O = [0, 0]; // drawing origin in world pixels
-  let mode = "hole", view = null, target = null, fitKey = "", teeMode = false, reading = null;
+  let mode = "hole", view = null, target = null, fitKey = "", teeMode = false, reading = null, edge = null; // edge: points being traced
 
   // Tee: the admin-set spot, else estimated from the yardage straight back through the green (back → front line).
   function teeOf(h, s) {
@@ -158,18 +158,30 @@
   }
   // local metres (east, north) from a lat/lon
   const enu = (o, p) => [(p[1] - o[1]) * 111320 * Math.cos(o[0] * Math.PI / 180), (p[0] - o[0]) * 111320];
+  // The green's shape: the traced edge when an admin has drawn one, otherwise the oval.
+  function shape(s) {
+    if (s.o && s.o.length >= 3) {
+      const c = s.m || s.o[0], poly = s.o.map(p => enu(c, p));
+      return {
+        inside: p => { const [x, y] = enu(c, p); let inn = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inn = !inn; } return inn; },
+        path: () => { ctx.beginPath(); s.o.forEach((p, i) => { const w = toW(p); ctx[i ? "lineTo" : "moveTo"](w[0] - O[0], w[1] - O[1]); }); ctx.closePath(); }
+      };
+    }
+    const ov = oval(s), px = 1 / mPerPx(ov.c[0]);
+    return { inside: p => inOval(ov, p), path: () => { const w = toW(ov.c); ctx.beginPath(); ctx.ellipse(w[0] - O[0], w[1] - O[1], ov.a * px, ov.b * px, -ov.ang, 0, Math.PI * 2); } };
+  }
   const inOval = (ov, p) => { const [e, n] = enu(ov.c, p), c = Math.cos(-ov.ang), s = Math.sin(-ov.ang), x = e * c - n * s, y = e * s + n * c; return (x / ov.a) ** 2 + (y / ov.b) ** 2 <= 1; };
   const slopeColor = pct => pct < 1 ? [76, 175, 80] : pct < 2 ? [205, 220, 57] : pct < 3 ? [255, 179, 0] : pct < 4 ? [245, 110, 30] : [220, 30, 40];
 
   function drawSlopes(h, s) {
     const S = slopes(h); if (!S) { loadDem(); return; }
-    const ov = oval(s), n = S.n, half = (n - 1) / 2, cw = toW(S.c), px = 1 / mPerPx(S.c[0]);
+    const sh = shape(s), n = S.n, half = (n - 1) / 2, cw = toW(S.c), px = 1 / mPerPx(S.c[0]);
     // Colour wash, one square per metre, inside the green
     const img = document.createElement("canvas"); img.width = n; img.height = n;
     const ic = img.getContext("2d"), id = ic.createImageData(n, n);
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const i = r * n + c, ll = [S.c[0] + (half - r) / 111320, S.c[1] + (c - half) / (111320 * Math.cos(S.c[0] * Math.PI / 180))];
-      if (!inOval(ov, ll)) continue;
+      if (!sh.inside(ll)) continue;
       const col = slopeColor(Math.hypot(S.gx[i], S.gy[i]) * 100);
       id.data.set([...col, 120], i * 4);
     }
@@ -179,8 +191,7 @@
     ctx.restore();
     // Contour lines every 3 cm (about 1¼ in) inside the green, so you can see the shape
     ctx.save();
-    ctx.beginPath(); const ovw = toW(ov.c);
-    ctx.ellipse(ovw[0] - O[0], ovw[1] - O[1], ov.a * px, ov.b * px, -ov.ang, 0, Math.PI * 2); ctx.clip();
+    sh.path(); ctx.clip();
     ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1 / view.k;
     const step = 0.03, P = (r, c) => [cw[0] - O[0] + (c - half) * px, cw[1] - O[1] + (r - half) * px];
     ctx.beginPath();
@@ -202,7 +213,7 @@
     const arrows = [];
     for (let r = 1; r < n - 1; r += 3) for (let c = 1; c < n - 1; c += 3) {
       const i = r * n + c, ll = [S.c[0] + (half - r) / 111320, S.c[1] + (c - half) / (111320 * Math.cos(S.c[0] * Math.PI / 180))];
-      if (!inOval(ov, ll)) continue;
+      if (!sh.inside(ll)) continue;
       const pct = Math.hypot(S.gx[i], S.gy[i]) * 100; if (pct < 0.4) continue;
       // downhill in world-pixel axes (x east, y south)
       const dx = -S.gx[i], dy = S.gy[i], m = Math.hypot(dx, dy);
@@ -269,7 +280,8 @@
     ctx.save(); ctx.translate(sz.w / 2, sz.h / 2); ctx.rotate(view.r); ctx.scale(view.k, view.k);
     drawTiles(sz);
     let arrows = null;
-    if (mode === "green") arrows = drawSlopes(h, s);
+    if (mode === "green" && !edge) arrows = drawSlopes(h, s);
+    if (s.o && !edge) { shape(s).path(); ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1.5 / view.k; ctx.stroke(); }
     ctx.restore();
     if (arrows) drawArrows(arrows);
 
@@ -289,7 +301,8 @@
       }
     }
     // Green spots: front, back small; middle gets a flag
-    ["f", "b"].forEach(k => s[k] && dot(S(s[k]), mode === "green" ? 4 : 3, "rgba(255,255,255,.85)"));
+    const fb = b && G.fb(h, b.pt), shown = fb || s;
+    ["f", "b"].forEach(k => shown[k] && dot(S(shown[k]), mode === "green" ? 4 : 3, "rgba(255,255,255,.85)"));
     const mp = S(m);
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mp[0], mp[1]); ctx.lineTo(mp[0], mp[1] - 20); ctx.stroke();
     ctx.fillStyle = "#e00122"; ctx.beginPath(); ctx.moveTo(mp[0], mp[1] - 20); ctx.lineTo(mp[0] + 12, mp[1] - 15); ctx.lineTo(mp[0], mp[1] - 10); ctx.fill();
@@ -300,13 +313,25 @@
       if (acc > 8) { ctx.beginPath(); ctx.arc(p[0], p[1], acc, 0, Math.PI * 2); ctx.fillStyle = "rgba(66,133,244,.18)"; ctx.fill(); }
       dot(p, 7, "#4285f4", "#fff");
     }
-    if (mode === "green") {
+    if (edge) {}
+    else if (mode === "green") {
       if (reading) { const p = S(reading.ll); dot(p, 5, "#fff", "#000"); pill([sz.w / 2, sz.h - 22], reading.text, { big: true }); }
       else if (DEM && !DEM.holes[h]) pill([sz.w / 2, sz.h - 22], "No slope data for this green yet");
       else if (DEM) pill([sz.w / 2, sz.h - 22], "Tap the green to read the slope");
     } else if (!target) pill([sz.w / 2, sz.h - 22], "Tap the map for yardages");
     else pill([sz.w / 2, sz.h - 22], "Tap again to move · ✕ to clear");
     if (teeMode) pill([sz.w / 2, 22], "Tap where the blue tee is", { bg: "#1e5ac8" });
+    if (edge) {
+      const pts = edge.map(S);
+      if (pts.length) {
+        ctx.strokeStyle = "#ffd400"; ctx.lineWidth = 2; ctx.beginPath(); pts.forEach((p, i) => ctx[i ? "lineTo" : "moveTo"](...p));
+        if (pts.length >= 3) ctx.closePath(); ctx.stroke();
+        pts.forEach(p => dot(p, 4, "#ffd400", "#000"));
+      }
+      pill([sz.w / 2, 64], edge.length < 3 ? "Tap your way around the edge of the green" : `${edge.length} points · keep going or Save edge`, { bg: "#8a6400" });
+    }
+    ["edgeUndo", "edgeCancel", "edgeSave"].forEach(id => $(id).hidden = !edge);
+    $("edgeSave").disabled = !(edge && edge.length >= 3);
     $("gpsMapClear").hidden = !(mode === "hole" && target);
     $("gpsMapNote").textContent = SRC[photo].credit + (mode === "green" && DEM ? " · Slopes: USGS lidar" : "") + (t.est && document.body.classList.contains("is-admin") ? " · Tee spot is estimated" : "");
   }
@@ -351,6 +376,7 @@
 
   function tap(q) {
     const ll = toLL(fromS(q)), h = G.hole();
+    if (edge) { edge.push([+ll[0].toFixed(7), +ll[1].toFixed(7)]); draw(); return; }
     if (teeMode) {
       teeMode = false; G.saveTee(h, [+ll[0].toFixed(7), +ll[1].toFixed(7)]); fitKey = ""; draw(); return;
     }
@@ -359,7 +385,7 @@
   }
 
   function setMode(m) {
-    mode = m; target = null; reading = null; fitKey = "";
+    mode = m; target = null; reading = null; fitKey = ""; if (m === "hole") edge = null;
     document.querySelectorAll("[data-mapmode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mapmode === m)));
     if (m === "green") loadDem();
     draw();
@@ -372,12 +398,18 @@
   const teeBtn = $("mapSetTee");
   if (teeBtn) teeBtn.onclick = () => { if (mode !== "hole") setMode("hole"); teeMode = true; location.hash = "#gps"; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw(); };
 
+  const edgeBtn = $("mapTraceEdge");
+  if (edgeBtn) edgeBtn.onclick = () => { teeMode = false; setMode("green"); edge = []; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw(); };
+  $("edgeUndo").onclick = () => { if (edge) { edge.pop(); draw(); } };
+  $("edgeCancel").onclick = () => { edge = null; draw(); };
+  $("edgeSave").onclick = () => { if (edge && edge.length >= 3) { G.saveOutline(G.hole(), edge); } edge = null; draw(); };
+
   let lastHole = null;
   window.GPSMap = {
     // Called whenever the GPS tab redraws (new fix, hole change, data loaded)
     update() {
       const h = G.hole();
-      if (h !== lastHole) { lastHole = h; target = null; reading = null; teeMode = false; fitKey = ""; }
+      if (h !== lastHole) { lastHole = h; target = null; reading = null; teeMode = false; edge = null; fitKey = ""; }
       draw();
     }
   };
