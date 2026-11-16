@@ -8,7 +8,7 @@ A phone-first app for the BCC Golf League at Avon Fields. It installs from the b
 - Score: hole-by-hole entry for your group with putts, fairways and greens, live leaderboard with weekly points.
 - Rounds: any week's results and team matchups, upcoming tee sheets, Ringer and Net Ringer boards.
 - GPS: front, middle and back yardages for each green, plus an admin tool to map the greens on the course.
-- GPS map (v2): satellite photo of the whole hole, tee at the bottom. Tap anywhere for yardages from you (or the tee) to that spot and on to the green. "Green" zooms in with a slope map (arrows point downhill, colours show steepness, lines every 3 cm) from USGS lidar.
+- GPS map (v2): aerial photo (Ohio OSIP III, leaf-off, ~15 cm) of the whole hole, tee at the bottom. Tap anywhere for yardages from you (or the tee) to that spot and on to the green. "Green" zooms in with a slope map (arrows point downhill, colours show steepness, lines every 3 cm) from USGS lidar.
 - Menu: league rules and skins winners.
 
 ## Limits for now

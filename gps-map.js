@@ -1,17 +1,16 @@
 // GPS version 2: a satellite map of the whole hole, turned so the tee is at the bottom and the green at the top.
 // Tap the map to drop a target and see yardages (you → target → middle of the green). "Green" zooms in and shows
 // a slope map built from USGS lidar (gps/greens-dem.json, made by tools/green_slopes.py).
-// Photos: Esri World Imagery (sharp, taken in the fall) or USGS National Map (summer, softer). Both free with credit.
+// Photo (Nitin 2026-11-16): Ohio's statewide aerial photos (OSIP III, OGRIP), leaf-off and about 15 cm a pixel, so greens
+// show clearly even under trees. Free public service; it allows this site to load it. One photo, no switch.
 (() => {
   const $ = id => document.getElementById(id);
   const G = window.GPS; if (!G) return;
   const YD = 1.0936133, Z = 20, TS = 256;
   const SRC = {
-    fall: { max: 19, url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`, credit: "Photo: Esri, Vantor, Earthstar Geographics" },
-    summer: { max: 16, url: (z, x, y) => `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`, credit: "Photo: USGS The National Map" }
+    ohio: { max: 20, url: (z, x, y) => `https://maps.ohio.gov/image/rest/services/osip_3_cache/MapServer/tile/${z}/${y}/${x}`, credit: "Photo: Ohio OGRIP (OSIP III)" }
   };
-  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
-  let photo = store("bcc-photo") === "summer" ? "summer" : "fall";
+  const photo = "ohio";
 
   // World pixels at zoom 20 (web mercator)
   const W = 256 * 2 ** Z;
@@ -87,7 +86,7 @@
     const key = photo + z + "/" + x + "/" + y;
     let t = tiles.get(key);
     if (!t) {
-      t = new Image(); t.crossOrigin = "anonymous"; t.ok = false;
+      t = new Image(); t.ok = false; // only drawn, never read back, so no cross-origin request needed
       t.onload = () => { t.ok = true; draw(); }; t.onerror = () => { t.bad = true; };
       t.src = SRC[photo].url(z, x, y); tiles.set(key, t);
       if (tiles.size > 400) tiles.delete(tiles.keys().next().value);
@@ -388,8 +387,6 @@
   document.querySelectorAll("[data-mapmode]").forEach(b => b.onclick = () => setMode(b.dataset.mapmode));
   $("gpsMapFit").onclick = () => { fitKey = ""; draw(); };
   $("gpsMapClear").onclick = () => { target = null; draw(); };
-  $("gpsPhoto").onclick = () => { photo = photo === "fall" ? "summer" : "fall"; store("bcc-photo", photo); $("gpsPhoto").textContent = photo === "fall" ? "Summer photo" : "Fall photo"; draw(); };
-  $("gpsPhoto").textContent = photo === "fall" ? "Summer photo" : "Fall photo";
   const teeBtn = $("mapSetTee");
   if (teeBtn) teeBtn.onclick = () => { if (mode !== "hole") setMode("hole"); teeMode = true; location.hash = "#gps"; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw(); };
 

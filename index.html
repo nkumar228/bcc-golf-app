@@ -1170,7 +1170,6 @@ the spirit, intent, and fairness of league competition.</p>
           <div><small>Back</small><b class="num" id="dB">—</b><i class="plays" id="pB"></i></div>
         </div>
         <div class="gps-map-tools">
-          <button class="map-chip" type="button" id="gpsPhoto">Summer photo</button>
           <button class="map-chip" type="button" id="gpsMapClear" hidden>✕ Clear</button>
           <button class="map-chip" type="button" id="edgeUndo" hidden>Undo point</button>
           <button class="map-chip" type="button" id="edgeCancel" hidden>Cancel</button>
@@ -1179,9 +1178,8 @@ the spirit, intent, and fairness of league competition.</p>
         </div>
         <p class="gps-map-note" id="gpsMapNote"></p>
       </div>
-      <div class="plays-opts"><span>Plays like:</span>
-        <label class="plays-opt"><input type="checkbox" id="playsOn"> Elevation</label>
-        <label class="plays-opt"><input type="checkbox" id="windOn"> Wind</label></div>
+      <div class="plays-opts">
+        <label class="plays-opt"><input type="checkbox" id="playsOn"> Plays like (elevation)</label></div>
       <p class="wind-line" id="windLine" hidden></p>
       <p class="gps-msg" id="gpsMsg">Yardages to the green from where you stand.</p>
       <div class="gps-ask" id="gpsAskBox" hidden><p id="gpsAskMsg"></p><button class="btn" id="gpsAsk" type="button">Allow location</button></div>
@@ -2550,9 +2548,9 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     return null;
   }
   // Wind (Nitin 2026-11-11): current wind at Avon from Open-Meteo, refreshed every 10 minutes while the GPS tab is open.
-  let windOn = (() => { try { return localStorage.getItem("bcc-wind") === "1"; } catch (e) { return false; } })(), wind = null, windAt = 0, windDown = false, windBusy = false;
-  $("windOn").checked = windOn;
-  $("windOn").onchange = () => { windOn = $("windOn").checked; try { localStorage.setItem("bcc-wind", windOn ? "1" : "0"); } catch (e) {} getWind(); render(); };
+  // Nitin 2026-11-16: no wind adjustment to yardages; wind only shows as the arrow on the map.
+  const windOn = false;
+  let wind = null, windAt = 0, windDown = false, windBusy = false;
   const AVON = [39.1612, -84.4780];
   function getWind() {
     if (windBusy || (wind && Date.now() - windAt < 600000)) return; // fetched even with Wind unticked, for the map's wind arrow
@@ -2675,7 +2673,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=3"></script>
+<script src="gps-map.js?v=4"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>
