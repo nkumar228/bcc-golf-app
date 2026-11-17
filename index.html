@@ -1186,22 +1186,13 @@ the spirit, intent, and fairness of league competition.</p>
     </div>
 
     <div class="card pad map-tool" id="mapTool">
-      <p class="label" style="margin-bottom:6px">Map this green (admin)</p>
-      <p class="note" style="margin:0 0 10px">Stand on the spot and tap. Wait until accuracy is under about 5 yards. When you're signed in with your league email, each spot is saved for everyone right away.</p>
+      <p class="label" style="margin-bottom:6px">Map this hole (admin)</p>
+      <p class="note" style="margin:0 0 10px">Do it from anywhere on the photo. The flag goes in the centre of the green you trace, and front and back follow each golfer's line through it. Saved for everyone right away.</p>
       <div class="map-btns">
-        <button class="btn small secondary" type="button" data-set="f">Set front</button>
-        <button class="btn small secondary" type="button" data-set="m">Set middle</button>
-        <button class="btn small secondary" type="button" data-set="b">Set back</button>
-      </div>
-      <div class="map-btns" style="margin-top:10px">
         <button class="btn small secondary" type="button" id="mapSetTee">Set blue tee on the map</button>
         <button class="btn small secondary" type="button" id="mapTraceEdge">Trace green edge on the map</button>
       </div>
       <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
-      <div class="map-btns" style="margin-top:10px">
-        <button class="btn small" type="button" id="mapShare">Share green data</button>
-        <button class="linkbtn" type="button" id="mapClear">Clear this hole</button>
-      </div>
     </div>
   </section>
 </main>
@@ -2441,7 +2432,24 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     render();
   }
   window.addEventListener("bcc-session", loadShared);
-  const spots = h => Object.assign({}, GREENS[h] || {}, local[h] || {});
+  // Middle of a traced green (Nitin 2026-11-17): the flag sits at the centre of the drawn edge (its area centre),
+  // and front / back are on the straight line from you through it. Untraced greens keep the marked middle.
+  function centreOf(o) {
+    const c0 = o[0], k = Math.cos(c0[0] * Math.PI / 180), P = o.map(p => [(p[1] - c0[1]) * k, p[0] - c0[0]]);
+    let A = 0, cx = 0, cy = 0;
+    for (let i = 0; i < P.length; i++) {
+      const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], f = x1 * y2 - x2 * y1;
+      A += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
+    }
+    if (Math.abs(A) < 1e-14) return null;
+    return [c0[0] + cy / (3 * A), c0[1] + cx / (3 * A) / k];
+  }
+  const spots = h => {
+    const s = Object.assign({}, GREENS[h] || {}, local[h] || {});
+    // Nitin 2026-11-17: once traced, the walked front/back marks aren't used at all (front/back come from the edge)
+    if (s.o && s.o.length >= 3) { const c = centreOf(s.o); if (c) s.m = c; delete s.f; delete s.b; }
+    return s;
+  };
   // Front and back along your line (Nitin 2026-11-16): once an admin has traced the green's edge on the map,
   // front and back are where the line from you through the middle crosses that edge, so they follow your angle.
   // Without a traced edge, the marked front and back spots are used.
@@ -2465,6 +2473,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   }
   const spotsFrom = (h, from) => { const s = spots(h), fb = lineFB(s, from); return fb ? Object.assign({}, s, fb, { line: true }) : s; };
   let nine = "F", idx = 0, fix = null, watch = null;
+  let flashUntil = 0; // a save message stays up a few seconds before the hole's status comes back
   const holeNo = () => NINES[nine].first + idx;
 
   const YD = 1.0936133;
@@ -2519,9 +2528,9 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     const mapped = ["f", "m", "b"].filter(k => s[k]);
     if (!mapped.length) $("gpsMsg").textContent = `Hole ${holeNo()}'s green hasn't been mapped yet.`;
     else if (!fix) $("gpsMsg").textContent = "Yardages show once your location comes in.";
-    else $("gpsMsg").textContent = mapped.length < 3 ? "Some spots on this green aren't mapped yet." : "Yardages to the green from where you stand.";
-    const names = { f: "front", m: "middle", b: "back" };
-    $("mapStatus").textContent = `Hole ${holeNo()}: ` + (mapped.length ? `${mapped.map(k => names[k]).join(", ")} saved` : "nothing saved yet") + ".";
+    else $("gpsMsg").textContent = "Yardages to the green from where you stand.";
+    const raw = spots(holeNo());
+    if (Date.now() > flashUntil) $("mapStatus").textContent = `Hole ${holeNo()}: green edge ${raw.o ? "traced" : "not traced yet"} · blue tee ${raw.t ? "set" : "not set yet"}.`;
     $("mapTool").classList.toggle("admin-on", document.body.classList.contains("is-admin"));
     if (window.GPSMap) GPSMap.update();
   }
@@ -2618,33 +2627,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   });
 
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(local)); } catch (e) {} };
-  document.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
-    if (!fix) { $("mapStatus").textContent = "Turn on GPS first."; return; }
-    if (fix.acc > 12 && !confirm(`Accuracy is only ± ${Math.round(fix.acc)} yds. Save anyway?`)) return;
-    const h = holeNo();
-    const spot = [+fix[0].toFixed(7), +fix[1].toFixed(7)];
-    if (shared()) {
-      const col = { f: "front", m: "mid", b: "back" }[b.dataset.set];
-      const course = courseIds[h >= 10 ? "B" : "F"];
-      GREENS[h] = Object.assign({}, GREENS[h], { [b.dataset.set]: spot }); render();
-      BCC.sb.from("greens").upsert({ course_id: course, hole: h, [col + "_lat"]: spot[0], [col + "_lon"]: spot[1], updated_at: new Date().toISOString() })
-        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save that spot. Check your signal and tap again." : $("mapStatus").textContent + " Saved for everyone."; });
-      return;
-    }
-    local[h] = Object.assign({}, local[h], { [b.dataset.set]: spot });
-    save(); render();
-  });
-  $("mapClear").onclick = () => {
-    if (!local[holeNo()] || !confirm(`Clear the spots saved on this phone for hole ${holeNo()}?`)) return;
-    delete local[holeNo()]; save(); render();
-  };
-  $("mapShare").onclick = async () => {
-    const text = JSON.stringify(Object.assign({}, GREENS, local));
-    try {
-      if (navigator.share) await navigator.share({ title: "BCC green data", text });
-      else { await navigator.clipboard.writeText(text); $("mapStatus").textContent = "Copied. Paste it in a message to send it over."; }
-    } catch (e) {}
-  };
+  const flash = t => { $("mapStatus").textContent = t; flashUntil = Date.now() + 6000; };
 
   // Used by the hole map (gps-map.js)
   window.GPS = {
@@ -2658,13 +2641,13 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       if (!shared()) { local[h] = Object.assign({}, local[h], { o: pts }); save(); render(); return; }
       GREENS[h] = Object.assign({}, GREENS[h], { o: pts }); render();
       BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, outline: pts, updated_at: new Date().toISOString() })
-        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save the green's edge. Check your signal and try again." : `Hole ${h}: green edge saved for everyone.`; });
+        .then(({ error }) => { flash(error ? "Couldn't save the green's edge. Check your signal and try again." : `Hole ${h}: green edge saved for everyone.`); });
     },
     saveTee(h, spot) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { t: spot }); save(); render(); return; }
       GREENS[h] = Object.assign({}, GREENS[h], { t: spot }); render();
       BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, tee_lat: spot[0], tee_lon: spot[1], updated_at: new Date().toISOString() })
-        .then(({ error }) => { $("mapStatus").textContent = error ? "Couldn't save the tee. Check your signal and try again." : `Hole ${h}: blue tee saved for everyone.`; });
+        .then(({ error }) => { flash(error ? "Couldn't save the tee. Check your signal and try again." : `Hole ${h}: blue tee saved for everyone.`); });
     }
   };
 
@@ -2673,7 +2656,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=4"></script>
+<script src="gps-map.js?v=6"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>
