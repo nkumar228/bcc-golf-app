@@ -2441,7 +2441,23 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     render();
   }
   window.addEventListener("bcc-session", loadShared);
-  const spots = h => Object.assign({}, GREENS[h] || {}, local[h] || {});
+  // Middle of a traced green (Nitin 2026-11-17): the flag sits at the centre of the drawn edge (its area centre),
+  // and front / back are on the straight line from you through it. Untraced greens keep the marked middle.
+  function centreOf(o) {
+    const c0 = o[0], k = Math.cos(c0[0] * Math.PI / 180), P = o.map(p => [(p[1] - c0[1]) * k, p[0] - c0[0]]);
+    let A = 0, cx = 0, cy = 0;
+    for (let i = 0; i < P.length; i++) {
+      const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], f = x1 * y2 - x2 * y1;
+      A += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
+    }
+    if (Math.abs(A) < 1e-14) return null;
+    return [c0[0] + cy / (3 * A), c0[1] + cx / (3 * A) / k];
+  }
+  const spots = h => {
+    const s = Object.assign({}, GREENS[h] || {}, local[h] || {});
+    if (s.o && s.o.length >= 3) { const c = centreOf(s.o); if (c) s.m = c; }
+    return s;
+  };
   // Front and back along your line (Nitin 2026-11-16): once an admin has traced the green's edge on the map,
   // front and back are where the line from you through the middle crosses that edge, so they follow your angle.
   // Without a traced edge, the marked front and back spots are used.
@@ -2673,7 +2689,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=4"></script>
+<script src="gps-map.js?v=5"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>
