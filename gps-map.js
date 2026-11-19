@@ -21,7 +21,7 @@
 
   const cv = $("gpsMap"), ctx = cv.getContext("2d");
   let O = [0, 0]; // drawing origin in world pixels
-  let mode = "hole", view = null, target = null, fitKey = "", teeMode = false, reading = null, edge = null; // edge: points being traced
+  let mode = "hole", view = null, target = null, fitKey = "", teeMode = false, aimMode = false, aimPending = true, reading = null, edge = null; // edge: points being traced
 
   // Tee: the admin-set spot, else estimated from the yardage straight back through the green (back → front line).
   function teeOf(h, s) {
@@ -31,6 +31,19 @@
     if (s.f && s.b) { const k = Math.cos(m[0] * Math.PI / 180); dx = (s.f[1] - s.b[1]) * k; dy = s.f[0] - s.b[0]; const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n; }
     const deg = G.yds(h) / YD / 111320;
     return { pt: [m[0] + dy * deg, m[1] + dx * deg / Math.cos(m[0] * Math.PI / 180)], est: true };
+  }
+  // 200-yard spot on par 4s (Nitin 2026-11-19): where the hole map's target starts. Admins place it in the middle of
+  // the fairway; until then it's 200 yards straight from the tee toward the flag.
+  const AIM_YDS = 200;
+  function at200(from, toward) {
+    const k = Math.cos(from[0] * Math.PI / 180), dx = (toward[1] - from[1]) * k, dy = toward[0] - from[0], n = Math.hypot(dx, dy) || 1;
+    const deg = AIM_YDS / YD / 111320;
+    return [from[0] + dy / n * deg, from[1] + dx / n * deg / k];
+  }
+  function aimOf(h, s) {
+    if (G.par(h) !== 4) return null;
+    const t = teeOf(h, s), m = s.m || s.f || s.b; if (!t || !m) return null;
+    return s.a || at200(t.pt, m);
   }
   const bearingW = (a, b) => Math.atan2(a[0] - b[0], a[1] - b[1]); // angle that turns a→b to point up the screen
 
@@ -279,6 +292,13 @@
     if (arrows) drawArrows(arrows);
 
     const t = teeOf(h, s), fx = G.fix(), b = base(h, s);
+    if (mode === "hole" && !edge && !teeMode && !aimMode && (aimPending || (target && target.auto))) {
+      const a = aimOf(h, s);
+      aimPending = false;
+      // start at the 200-yard spot, unless you're already past it
+      if (a && !(fx && dist(fx, m) < dist(a, m) + 20)) { target = a.slice(); target.auto = true; }
+      else if (target && target.auto) target = null;
+    }
     const S = p => toS(toW(p), view, sz);
     if (mode === "hole") {
       dot(S(t.pt), 7, t.est ? "rgba(30,90,200,.6)" : "#1e5ac8", "#fff");
@@ -315,6 +335,7 @@
     else pill([sz.w / 2, sz.h - 22], "Tap again to move · ✕ to clear");
     windBadge(sz);
     if (teeMode) pill([sz.w / 2, 22], "Tap where the blue tee is", { bg: "#1e5ac8" });
+    if (aimMode) pill([sz.w / 2, 22], "Tap the middle of the fairway", { bg: "#1e5ac8" });
     if (edge) {
       const pts = edge.map(S);
       if (pts.length) {
@@ -327,7 +348,7 @@
     ["edgeUndo", "edgeCancel", "edgeSave"].forEach(id => $(id).hidden = !edge);
     $("edgeSave").disabled = !(edge && edge.length >= 3);
     $("gpsMapClear").hidden = !(mode === "hole" && target);
-    $("gpsMapNote").textContent = SRC[photo].credit + (mode === "green" && DEM ? " · Slopes: USGS lidar" : "") + (t.est && document.body.classList.contains("is-admin") ? " · Tee spot is estimated" : "");
+    $("gpsMapNote").textContent = SRC[photo].credit + (mode === "green" && DEM ? " · Slopes: USGS lidar" : "") + (t.est && window.adminTools && adminTools() ? " · Tee spot is estimated" : "");
   }
 
   // Gestures: drag to pan, pinch or wheel to zoom, tap to place
@@ -371,6 +392,12 @@
   function tap(q) {
     const ll = toLL(fromS(q)), h = G.hole();
     if (edge) { edge.push([+ll[0].toFixed(7), +ll[1].toFixed(7)]); draw(); return; }
+    if (aimMode) {
+      aimMode = false;
+      const s = G.spots(h), t = teeOf(h, s);
+      if (t) { const a = at200(t.pt, ll); G.saveAim(h, [+a[0].toFixed(7), +a[1].toFixed(7)]); target = a; target.auto = true; }
+      draw(); return;
+    }
     if (teeMode) {
       teeMode = false; G.saveTee(h, [+ll[0].toFixed(7), +ll[1].toFixed(7)]); fitKey = ""; draw(); return;
     }
@@ -379,14 +406,19 @@
   }
 
   function setMode(m) {
-    mode = m; target = null; reading = null; fitKey = ""; if (m === "hole") edge = null;
+    mode = m; target = null; aimPending = m === "hole"; reading = null; fitKey = ""; if (m === "hole") edge = null;
     document.querySelectorAll("[data-mapmode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mapmode === m)));
     if (m === "green") loadDem();
     draw();
   }
   document.querySelectorAll("[data-mapmode]").forEach(b => b.onclick = () => setMode(b.dataset.mapmode));
   $("gpsMapFit").onclick = () => { fitKey = ""; draw(); };
-  $("gpsMapClear").onclick = () => { target = null; draw(); };
+  $("gpsMapClear").onclick = () => { target = null; aimPending = false; draw(); };
+  const aimBtn = $("mapSetAim");
+  if (aimBtn) aimBtn.onclick = () => {
+    if (G.par(G.hole()) !== 4) { G.note("The 200-yard spot is only used on par 4s."); return; }
+    if (mode !== "hole") setMode("hole"); teeMode = false; aimMode = true; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw();
+  };
   const teeBtn = $("mapSetTee");
   if (teeBtn) teeBtn.onclick = () => { if (mode !== "hole") setMode("hole"); teeMode = true; location.hash = "#gps"; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw(); };
 
@@ -401,7 +433,7 @@
     // Called whenever the GPS tab redraws (new fix, hole change, data loaded)
     update() {
       const h = G.hole();
-      if (h !== lastHole) { lastHole = h; target = null; reading = null; teeMode = false; edge = null; fitKey = ""; }
+      if (h !== lastHole) { lastHole = h; target = null; aimPending = true; reading = null; teeMode = false; aimMode = false; edge = null; fitKey = ""; }
       draw();
     }
   };

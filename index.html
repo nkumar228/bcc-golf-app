@@ -576,6 +576,9 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .gps-map-note { margin: 4px 16px 0; font-size: 11px; color: var(--muted); text-align: right; min-height: 1.2em; }
 .map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .map-tool:not(.admin-on) { display: none; }
+/* Admin tools switch on the GPS tab (Nitin 2026-11-19): admins only, off unless turned on on this phone */
+.gps-admin-switch { display: none; }
+body.is-admin .gps-admin-switch { display: flex; }
 </style>
 </head>
 <body>
@@ -1178,6 +1181,8 @@ the spirit, intent, and fairness of league competition.</p>
         </div>
         <p class="gps-map-note" id="gpsMapNote"></p>
       </div>
+      <div class="plays-opts gps-admin-switch">
+        <label class="plays-opt"><input type="checkbox" id="adminTools"> Admin tools (tee, green edge, 200-yard spot)</label></div>
       <div class="plays-opts">
         <label class="plays-opt"><input type="checkbox" id="playsOn"> Plays like (elevation)</label></div>
       <p class="wind-line" id="windLine" hidden></p>
@@ -1191,6 +1196,7 @@ the spirit, intent, and fairness of league competition.</p>
       <div class="map-btns">
         <button class="btn small secondary" type="button" id="mapSetTee">Set blue tee on the map</button>
         <button class="btn small secondary" type="button" id="mapTraceEdge">Trace green edge on the map</button>
+        <button class="btn small secondary" type="button" id="mapSetAim">Set 200-yard spot (par 4s)</button>
       </div>
       <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
     </div>
@@ -2426,6 +2432,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       if (g.mid_lat != null) o.m = [g.mid_lat, g.mid_lon];
       if (g.back_lat != null) o.b = [g.back_lat, g.back_lon];
       if (g.tee_lat != null) o.t = [g.tee_lat, g.tee_lon];
+      if (g.aim_lat != null) o.a = [g.aim_lat, g.aim_lon];
       if (Array.isArray(g.outline) && g.outline.length >= 3) o.o = g.outline;
       GREENS[g.hole] = o;
     });
@@ -2473,6 +2480,10 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   }
   const spotsFrom = (h, from) => { const s = spots(h), fb = lineFB(s, from); return fb ? Object.assign({}, s, fb, { line: true }) : s; };
   let nine = "F", idx = 0, fix = null, watch = null;
+  // Admin tools switch: remembered on this phone, off by default
+  window.adminTools = () => { try { return document.body.classList.contains("is-admin") && localStorage.getItem("bcc-admin-tools") === "1"; } catch (e) { return false; } };
+  try { $("adminTools").checked = localStorage.getItem("bcc-admin-tools") === "1"; } catch (e) {}
+  $("adminTools").onchange = () => { try { localStorage.setItem("bcc-admin-tools", $("adminTools").checked ? "1" : "0"); } catch (e) {} render(); };
   let flashUntil = 0; // a save message stays up a few seconds before the hole's status comes back
   const holeNo = () => NINES[nine].first + idx;
 
@@ -2530,8 +2541,8 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     else if (!fix) $("gpsMsg").textContent = "Yardages show once your location comes in.";
     else $("gpsMsg").textContent = "Yardages to the green from where you stand.";
     const raw = spots(holeNo());
-    if (Date.now() > flashUntil) $("mapStatus").textContent = `Hole ${holeNo()}: green edge ${raw.o ? "traced" : "not traced yet"} · blue tee ${raw.t ? "set" : "not set yet"}.`;
-    $("mapTool").classList.toggle("admin-on", document.body.classList.contains("is-admin"));
+    if (Date.now() > flashUntil) $("mapStatus").textContent = `Hole ${holeNo()}: green edge ${raw.o ? "traced" : "not traced yet"} · blue tee ${raw.t ? "set" : "not set yet"}` + (NINES[nine].par[idx] === 4 ? ` · 200-yd spot ${raw.a ? "set" : "not set yet"}` : "") + ".";
+    $("mapTool").classList.toggle("admin-on", adminTools());
     if (window.GPSMap) GPSMap.update();
   }
 
@@ -2643,6 +2654,15 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
       BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, outline: pts, updated_at: new Date().toISOString() })
         .then(({ error }) => { flash(error ? "Couldn't save the green's edge. Check your signal and try again." : `Hole ${h}: green edge saved for everyone.`); });
     },
+    par: h => NINES[h >= 10 ? "B" : "F"].par[(h - 1) % 9],
+    note: t => flash(t),
+    // Admins place the 200-yard spot (par 4s) in the middle of the fairway; saved for everyone.
+    saveAim(h, spot) {
+      if (!shared()) { local[h] = Object.assign({}, local[h], { a: spot }); save(); render(); return; }
+      GREENS[h] = Object.assign({}, GREENS[h], { a: spot }); render();
+      BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, aim_lat: spot[0], aim_lon: spot[1], updated_at: new Date().toISOString() })
+        .then(({ error }) => { flash(error ? "Couldn't save the 200-yard spot. Check your signal and try again." : `Hole ${h}: 200-yard spot saved for everyone.`); });
+    },
     saveTee(h, spot) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { t: spot }); save(); render(); return; }
       GREENS[h] = Object.assign({}, GREENS[h], { t: spot }); render();
@@ -2656,11 +2676,11 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=6"></script>
+<script src="gps-map.js?v=7"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>
-new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", document.body.classList.contains("is-admin")); })
+new MutationObserver(() => { const t = document.getElementById("mapTool"); if (t) t.classList.toggle("admin-on", window.adminTools ? adminTools() : false); })
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
