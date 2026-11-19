@@ -1182,7 +1182,7 @@ the spirit, intent, and fairness of league competition.</p>
         <p class="gps-map-note" id="gpsMapNote"></p>
       </div>
       <div class="plays-opts gps-admin-switch">
-        <label class="plays-opt"><input type="checkbox" id="adminTools"> Admin tools (tee, green edge, 200-yard spot)</label></div>
+        <label class="plays-opt"><input type="checkbox" id="adminTools"> Admin tools (tee, green edge, target spot)</label></div>
       <div class="plays-opts">
         <label class="plays-opt"><input type="checkbox" id="playsOn"> Plays like (elevation)</label></div>
       <p class="wind-line" id="windLine" hidden></p>
@@ -1196,7 +1196,7 @@ the spirit, intent, and fairness of league competition.</p>
       <div class="map-btns">
         <button class="btn small secondary" type="button" id="mapSetTee">Set blue tee on the map</button>
         <button class="btn small secondary" type="button" id="mapTraceEdge">Trace green edge on the map</button>
-        <button class="btn small secondary" type="button" id="mapSetAim">Set 200-yard spot (par 4s)</button>
+        <button class="btn small secondary" type="button" id="mapSetAim">Set starting target on the map</button>
       </div>
       <p class="updated" id="mapStatus" style="margin:10px 0 0"></p>
     </div>
@@ -2541,7 +2541,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     else if (!fix) $("gpsMsg").textContent = "Yardages show once your location comes in.";
     else $("gpsMsg").textContent = "Yardages to the green from where you stand.";
     const raw = spots(holeNo());
-    if (Date.now() > flashUntil) $("mapStatus").textContent = `Hole ${holeNo()}: green edge ${raw.o ? "traced" : "not traced yet"} · blue tee ${raw.t ? "set" : "not set yet"}` + (NINES[nine].par[idx] === 4 ? ` · 200-yd spot ${raw.a ? "set" : "not set yet"}` : "") + ".";
+    if (Date.now() > flashUntil) $("mapStatus").textContent = `Hole ${holeNo()}: green edge ${raw.o ? "traced" : "not traced yet"} · blue tee ${raw.t ? "set" : "not set yet"}` + ` · starting target ${raw.a ? "set" : "none"}` + ".";
     $("mapTool").classList.toggle("admin-on", adminTools());
     if (window.GPSMap) GPSMap.update();
   }
@@ -2656,12 +2656,12 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
     },
     par: h => NINES[h >= 10 ? "B" : "F"].par[(h - 1) % 9],
     note: t => flash(t),
-    // Admins place the 200-yard spot (par 4s) in the middle of the fairway; saved for everyone.
+    // Admins place the hole map's starting target (any spot on the hole); saved for everyone.
     saveAim(h, spot) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { a: spot }); save(); render(); return; }
       GREENS[h] = Object.assign({}, GREENS[h], { a: spot }); render();
       BCC.sb.from("greens").upsert({ course_id: courseIds[h >= 10 ? "B" : "F"], hole: h, aim_lat: spot[0], aim_lon: spot[1], updated_at: new Date().toISOString() })
-        .then(({ error }) => { flash(error ? "Couldn't save the 200-yard spot. Check your signal and try again." : `Hole ${h}: 200-yard spot saved for everyone.`); });
+        .then(({ error }) => { flash(error ? "Couldn't save the target spot. Check your signal and try again." : `Hole ${h}: starting target saved for everyone.`); });
     },
     saveTee(h, spot) {
       if (!shared()) { local[h] = Object.assign({}, local[h], { t: spot }); save(); render(); return; }
@@ -2676,7 +2676,7 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   render(); loadShared();
 })();
 </script>
-<script src="gps-map.js?v=7"></script>
+<script src="gps-map.js?v=8"></script>
 <script src="cup.js?v=66"></script>
 <script src="cup-app.js?v=67"></script>
 <script>

@@ -32,19 +32,9 @@
     const deg = G.yds(h) / YD / 111320;
     return { pt: [m[0] + dy * deg, m[1] + dx * deg / Math.cos(m[0] * Math.PI / 180)], est: true };
   }
-  // 200-yard spot on par 4s (Nitin 2026-11-19): where the hole map's target starts. Admins place it in the middle of
-  // the fairway; until then it's 200 yards straight from the tee toward the flag.
-  const AIM_YDS = 200;
-  function at200(from, toward) {
-    const k = Math.cos(from[0] * Math.PI / 180), dx = (toward[1] - from[1]) * k, dy = toward[0] - from[0], n = Math.hypot(dx, dy) || 1;
-    const deg = AIM_YDS / YD / 111320;
-    return [from[0] + dy / n * deg, from[1] + dx / n * deg / k];
-  }
-  function aimOf(h, s) {
-    if (G.par(h) !== 4) return null;
-    const t = teeOf(h, s), m = s.m || s.f || s.b; if (!t || !m) return null;
-    return s.a || at200(t.pt, m);
-  }
+  // Starting target (Nitin 2026-11-19): an admin taps a spot on the hole (say the middle of the fairway) and the hole map
+  // opens with the target there, showing the yards to it and from it to the flag. Holes without a spot open with no target.
+  const aimOf = (h, s) => s.a || null;
   const bearingW = (a, b) => Math.atan2(a[0] - b[0], a[1] - b[1]); // angle that turns a→b to point up the screen
 
   function size() {
@@ -295,7 +285,7 @@
     if (mode === "hole" && !edge && !teeMode && !aimMode && (aimPending || (target && target.auto))) {
       const a = aimOf(h, s);
       aimPending = false;
-      // start at the 200-yard spot, unless you're already past it
+      // start at the admin's spot, unless you're already past it
       if (a && !(fx && dist(fx, m) < dist(a, m) + 20)) { target = a.slice(); target.auto = true; }
       else if (target && target.auto) target = null;
     }
@@ -335,7 +325,7 @@
     else pill([sz.w / 2, sz.h - 22], "Tap again to move · ✕ to clear");
     windBadge(sz);
     if (teeMode) pill([sz.w / 2, 22], "Tap where the blue tee is", { bg: "#1e5ac8" });
-    if (aimMode) pill([sz.w / 2, 22], "Tap the middle of the fairway", { bg: "#1e5ac8" });
+    if (aimMode) pill([sz.w / 2, 22], "Tap where the target should start", { bg: "#1e5ac8" });
     if (edge) {
       const pts = edge.map(S);
       if (pts.length) {
@@ -394,8 +384,7 @@
     if (edge) { edge.push([+ll[0].toFixed(7), +ll[1].toFixed(7)]); draw(); return; }
     if (aimMode) {
       aimMode = false;
-      const s = G.spots(h), t = teeOf(h, s);
-      if (t) { const a = at200(t.pt, ll); G.saveAim(h, [+a[0].toFixed(7), +a[1].toFixed(7)]); target = a; target.auto = true; }
+      const a = [+ll[0].toFixed(7), +ll[1].toFixed(7)]; G.saveAim(h, a); target = a.slice(); target.auto = true;
       draw(); return;
     }
     if (teeMode) {
@@ -416,7 +405,6 @@
   $("gpsMapClear").onclick = () => { target = null; aimPending = false; draw(); };
   const aimBtn = $("mapSetAim");
   if (aimBtn) aimBtn.onclick = () => {
-    if (G.par(G.hole()) !== 4) { G.note("The 200-yard spot is only used on par 4s."); return; }
     if (mode !== "hole") setMode("hole"); teeMode = false; aimMode = true; cv.scrollIntoView({ block: "center", behavior: "smooth" }); draw();
   };
   const teeBtn = $("mapSetTee");
