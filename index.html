@@ -366,6 +366,18 @@ body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
 .tee small { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .hero-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; }
 .btn.small { flex: 0 0 auto; font-size: 14px; padding: 9px 14px; text-decoration: none; display: inline-block; }
+.gordos { padding: 14px 16px; display: grid; gap: 10px; }
+.go-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.go-date { margin-top: 2px; }
+.go-count { text-align: right; line-height: 1; }
+.go-count b { font-family: var(--display); font-size: 30px; font-weight: 700; display: block; }
+.go-count small { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.go-seg { justify-self: start; }
+.go-seg button { font-size: 14px; padding: 7px 16px; }
+.go-seg button[data-go="1"][aria-pressed="true"] { background: var(--green); color: #fff; }
+.go-names { font-size: 14px; }
+.go-names.no { color: var(--muted); font-size: 13px; }
+.go-names:empty { display: none; }
 .skins { padding: 16px; border: 2px solid var(--flag); background: linear-gradient(var(--surface), var(--surface)); display: grid; gap: 8px; }
 .sk-hedit { display: grid; gap: 6px; }
 .skpick { position: relative; }
@@ -689,6 +701,19 @@ body.is-admin .gps-admin-switch { display: flex; }
         <div class="sk-actions"><button class="btn small" type="submit">Post skins</button><button class="btn small secondary" type="button" id="skCancel">Cancel</button></div>
         <p class="updated" style="margin:0">Only league admins see Edit. Adding a winner saves the week to Past winners, and everyone sees the update.</p>
       </form>
+    </div>
+
+    <div class="card gordos" id="gordos" aria-labelledby="gol">
+      <div class="go-head">
+        <div><p class="label" id="gol">Gordo's after league</p><div class="go-date updated" id="goDate">Tonight</div></div>
+        <div class="go-count"><b class="num" id="goN">0</b><small>going</small></div>
+      </div>
+      <div class="seg go-seg" role="group" aria-label="Are you going to Gordo's?">
+        <button type="button" data-go="1" aria-pressed="false">Going</button>
+        <button type="button" data-go="0" aria-pressed="false">Not going</button>
+      </div>
+      <div class="go-names" id="goYes"></div>
+      <div class="go-names no" id="goNo"></div>
     </div>
 
     <section style="display:grid;gap:8px" aria-labelledby="psl">
@@ -1730,6 +1755,7 @@ the spirit, intent, and fairness of league competition.</p>
         sb.rpc("rounds_on_nine", { p_course: ev.course_id, p_before: ev.play_date })
       ]);
       ctx = { season, ev, course, tees: tees || [], teams: teams || [], matchups: matchups || [], lineups: lineups || [], hcp: new Map((hcps || []).map(h => [h.player_id, +h.handicap_index])), ghostNet: new Map((gn || []).map(g => [g.player_id, g.net])), nineRounds: new Map((rn || []).map(g => [g.player_id, g.n])) };
+      window.dispatchEvent(new CustomEvent("bcc-event", { detail: ev }));
       await refreshScores(false);
     }
 
@@ -2402,6 +2428,71 @@ const WEEKS = [{"e":1,"d":"4/21/2026","c":"Front","note":"","rain":false,"p":[["
   renderSkins(); renderHist(); close();
   $("sgFront").innerHTML = GAMES["Front nine"].map(g => `<li>${g}</li>`).join("");
   $("sgBack").innerHTML = GAMES["Back nine"].map(g => `<li>${g}</li>`).join("");
+})();
+</script>
+<script>
+// Gordo's after league: each player taps Going / Not going for this week's league night.
+// Answers belong to that night's event, so the count starts fresh every week.
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const when = d => { if (d === today()) return "Tonight, after the round"; const x = new Date(d + "T12:00:00"); return `${DOW[x.getDay()]} ${MON[x.getMonth()]} ${x.getDate()}, after the round`; };
+  const real = () => { const s = window.BCC && BCC.getSession(); return !!(s && s.real && BCC.sb); };
+  const me = () => window.BCC && BCC.getSession()?.playerId;
+  const DEMO = [["Derek", "Woolum", 1], ["Josh", "Hessler", 1], ["Tom", "Leemhuis", 1], ["Jake", "Wegrzyn", 0]];
+  let ev = null, rows = [], busy = false;
+
+  function render() {
+    const nm = r => `${r.first} ${(r.last || "?")[0]}.`;
+    const sort = a => a.sort((x, y) => x.first.localeCompare(y.first));
+    const yes = sort(rows.filter(r => r.going)), no = sort(rows.filter(r => !r.going));
+    const mine = rows.find(r => r.mine);
+    $("goN").textContent = yes.length;
+    $("goDate").textContent = ev ? when(ev.play_date) : "Tonight, after the round";
+    $("goYes").innerHTML = yes.length ? yes.map(r => r.mine ? `<b>${esc(nm(r))}</b>` : esc(nm(r))).join(", ") : '<span class="updated">No one yet. Be the first.</span>';
+    $("goNo").textContent = no.length ? "Not going: " + no.map(nm).join(", ") : "";
+    document.querySelectorAll("#gordos [data-go]").forEach(b => b.setAttribute("aria-pressed", String(!!mine && mine.going === (b.dataset.go === "1"))));
+  }
+
+  async function load() {
+    if (!real() || !ev) return;
+    const { data, error } = await BCC.sb.from("gordos").select("player_id,going,players(first_name,last_name)").eq("event_id", ev.id);
+    if (error) return;
+    const id = me();
+    rows = (data || []).map(r => ({ id: r.player_id, going: r.going, first: r.players?.first_name || "", last: r.players?.last_name || "", mine: r.player_id === id }));
+    render();
+  }
+
+  async function answer(going) {
+    if (busy) return;
+    const mine = rows.find(r => r.mine), clear = !!mine && mine.going === going; // tap your answer again to take it back
+    if (!real()) {
+      const s = window.BCC && BCC.getSession(), [f, ...l] = String(s?.name || "You").split(" ");
+      rows = rows.filter(r => !r.mine);
+      if (!clear) rows.push({ going, first: f, last: l.join(" "), mine: true });
+      render(); return;
+    }
+    if (!ev) return;
+    busy = true;
+    const q = BCC.sb.from("gordos");
+    const { error } = clear ? await q.delete().eq("event_id", ev.id).eq("player_id", me())
+      : await q.upsert({ event_id: ev.id, player_id: me(), going, updated_at: new Date().toISOString() }, { onConflict: "event_id,player_id" });
+    busy = false;
+    if (error) { alert("Couldn't save that. Check your signal and try again."); return; }
+    load();
+  }
+  document.querySelectorAll("#gordos [data-go]").forEach(b => b.onclick = () => answer(b.dataset.go === "1"));
+
+  window.addEventListener("bcc-session", () => { if (real()) { rows = []; render(); } });
+  window.addEventListener("bcc-event", e => { ev = e.detail; rows = []; render(); load(); });
+  const home = () => (location.hash || "#home") === "#home" && document.visibilityState === "visible";
+  window.addEventListener("hashchange", () => { if (home()) load(); });
+  document.addEventListener("visibilitychange", () => { if (home()) load(); });
+  setInterval(() => { if (home()) load(); }, 60000);
+  if (!real()) rows = DEMO.map(([first, last, g]) => ({ first, last, going: !!g }));
+  render();
 })();
 </script>
 <script>
